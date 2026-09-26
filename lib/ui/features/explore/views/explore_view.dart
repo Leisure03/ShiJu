@@ -168,7 +168,7 @@ class _ExploreViewState extends State<ExploreView> {
                                 '#$tag',
                                 style: AppTypography.label(
                                   isSelected
-                                      ? TraditionalPalette.kXuanPaperWhite
+                                      ? palette.onCinnabar
                                       : palette.secondaryText,
                                   fontSize: 12.5,
                                   fontWeight: isSelected

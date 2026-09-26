@@ -46,20 +46,20 @@ void main() {
       expect(ziShi.alias, '夜半');
     });
 
-    test('中国传统色色板解析与玄青夜间模式覆盖准确', () {
-      final TraditionalPalette tianShui =
+    test('奶雾蔷薇与雾灰藕紫双生色板解析准确', () {
+      final TraditionalPalette dayPalette =
           TraditionalPalette.resolve(PaletteType.tianShuiBi);
-      expect(tianShui.name, '天水碧');
-      expect(tianShui.background, const Color(0xFFD4E5E3));
-      expect(tianShui.themeAccent, const Color(0xFF3A6965));
+      expect(dayPalette.name, '奶雾蔷薇');
+      expect(dayPalette.background, const Color(0xFFF8CDED));
+      expect(dayPalette.themeAccent, const Color(0xFFA198A8));
 
       final TraditionalPalette dark = TraditionalPalette.resolve(
         PaletteType.tianShuiBi,
         isDarkMode: true,
       );
-      expect(dark.name, '玄青色');
-      expect(dark.background, const Color(0xFF1A1C1E));
-      expect(dark.inkText, const Color(0xFFE2E1DC));
+      expect(dark.name, '雾灰藕紫');
+      expect(dark.background, const Color(0xFFA198A8));
+      expect(dark.inkText, const Color(0xFFF8CDED));
     });
 
     test('LocalStorageService 持久化保存收藏列表、阅读历史与横竖排偏好', () async {
@@ -235,11 +235,11 @@ void main() {
       expect(viewModel.filteredPoems.length, 1);
       expect(viewModel.filteredPoems.first.title, '题龙阳县青草湖');
 
-      // 4. 验证玄青夜间模式一键切换
+      // 4. 验证雾灰藕紫反转模式一键切换
       await tester.tap(find.byKey(const Key('toggle_dark_mode_button')));
       await tester.pumpAndSettle();
       expect(viewModel.isDarkMode, isTrue);
-      expect(viewModel.activePalette.name, '玄青色');
+      expect(viewModel.activePalette.name, '雾灰藕紫');
     });
   });
 }
