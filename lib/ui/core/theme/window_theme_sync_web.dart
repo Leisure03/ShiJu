@@ -22,9 +22,15 @@ void syncWindowThemeColorImpl(Color backgroundColor, {required bool isDark}) {
     // 2. 同步 body 背景色
     web.document.body?.style.backgroundColor = hex;
 
-    // 3. 使用零宽字符替代生硬的系统标题栏黑字，让顶部视觉完全留白纯净
-    if (web.document.title != '\u200B') {
-      web.document.title = '\u200B';
+    // 3. 在 iOS/移动端保持标题为「拾句」便于添加到主屏幕，桌面端 --app 窗口使用零宽字符保持留白
+    final String ua = web.window.navigator.userAgent.toLowerCase();
+    final bool isMobileDevice = ua.contains('iphone') ||
+        ua.contains('ipad') ||
+        ua.contains('ipod') ||
+        ua.contains('android');
+    final String targetTitle = isMobileDevice ? '拾句' : '\u200B';
+    if (web.document.title != targetTitle) {
+      web.document.title = targetTitle;
     }
   } catch (_) {}
 }

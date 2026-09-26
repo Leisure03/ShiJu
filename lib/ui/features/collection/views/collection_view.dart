@@ -62,19 +62,22 @@ class _CollectionViewState extends State<CollectionView> {
                           fontSize: 12,
                         ),
                         const SizedBox(width: 12),
-                        Text(
-                          '收录心仪诗笺与漫游足迹（本地持久保存）',
-                          style: AppTypography.attribution(
-                            palette.secondaryText,
-                            fontSize: 13.5,
+                        Flexible(
+                          child: Text(
+                            '收录心仪诗笺与漫游足迹（本地持久保存）',
+                            style: AppTypography.attribution(
+                              palette.secondaryText,
+                              fontSize: 13.5,
+                            ),
                           ),
                         ),
                       ],
                     ),
 
                     // 收藏夹 / 阅读历史切换按钮组
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
                       children: <Widget>[
                         _buildSubTabChip(
                           key: const Key('collection_tab_favorites'),
@@ -82,7 +85,6 @@ class _CollectionViewState extends State<CollectionView> {
                           label: '雅藏 · 收藏夹 (${favorites.length})',
                           palette: palette,
                         ),
-                        const SizedBox(width: 8),
                         _buildSubTabChip(
                           key: const Key('collection_tab_history'),
                           index: 1,

@@ -241,5 +241,40 @@ void main() {
       expect(viewModel.isDarkMode, isTrue);
       expect(viewModel.activePalette.name, '玄青色');
     });
+
+    testWidgets('iPhone 17 (393x852) 竖屏视口下全页面响应式渲染无溢出', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(393, 852));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final ShiJuViewModel viewModel = _createTestViewModel();
+      await viewModel.initialize();
+
+      await tester.pumpWidget(ShiJuApp(viewModel: viewModel));
+      await tester.pumpAndSettle();
+
+      // 首页在 393px 下正常渲染
+      expect(find.text('今日拾句'), findsOneWidget);
+
+      // 切换横排并打开详情页
+      await tester.tap(find.byKey(const Key('toggle_layout_button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('醉后不知天在水，满船清梦压星河。'));
+      await tester.pumpAndSettle();
+      expect(find.text('全诗展卷'), findsOneWidget);
+
+      // 返回首页，依次切换寻章摘句与藏书阁
+      await tester.tap(find.text('返回拾句'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('nav_tab_explore')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('explore_search_input')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('nav_tab_collection')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('collection_tab_favorites')), findsOneWidget);
+    });
   });
 }
