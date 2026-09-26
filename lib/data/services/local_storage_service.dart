@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../../domain/models/auth_user_model.dart';
 import 'storage_driver_stub.dart';
 import 'storage_driver_stub.dart'
     if (dart.library.js_interop) 'storage_driver_web.dart'
@@ -15,6 +16,7 @@ class LocalStorageService {
   static const String kHistoryKey = 'shiju_history';
   static const String kVerticalLayoutKey = 'shiju_is_vertical_layout';
   static const String kDarkModeKey = 'shiju_is_dark_mode';
+  static const String kAuthUserKey = 'shiju_wechat_auth_user';
 
   /// 获取收藏诗词 ID 列表
   Future<List<String>> getFavoriteIds() async {
@@ -79,5 +81,29 @@ class LocalStorageService {
   /// 保存夜间模式偏好
   Future<void> saveIsDarkMode(bool isDark) async {
     await _driver.setItem(kDarkModeKey, isDark.toString());
+  }
+
+  /// 获取已登录的微信雅士用户信息（未登录返回 null）
+  Future<WeChatUser?> getAuthUser() async {
+    final String? raw = await _driver.getItem(kAuthUserKey);
+    if (raw == null || raw.isEmpty) {
+      return null;
+    }
+    try {
+      final Object? decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        return WeChatUser.fromJson(decoded);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// 保存或清除微信登录用户信息（传入 null 表示退出登录）
+  Future<void> saveAuthUser(WeChatUser? user) async {
+    if (user == null) {
+      await _driver.setItem(kAuthUserKey, '');
+    } else {
+      await _driver.setItem(kAuthUserKey, jsonEncode(user.toJson()));
+    }
   }
 }

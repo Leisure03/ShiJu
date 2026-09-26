@@ -593,6 +593,7 @@ class _HomeViewState extends State<HomeView>
                     poem: poem,
                     palette: palette,
                     isVertical: isVertical,
+                    currentUser: widget.viewModel.currentUser,
                   );
                 },
                 borderRadius: BorderRadius.circular(6),

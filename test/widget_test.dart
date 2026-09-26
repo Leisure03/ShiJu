@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shiju/data/repositories/poetry_repository.dart';
 import 'package:shiju/data/services/local_storage_service.dart';
 import 'package:shiju/data/services/storage_driver_stub.dart';
+import 'package:shiju/domain/models/auth_user_model.dart';
 import 'package:shiju/main.dart';
 import 'package:shiju/ui/core/theme/traditional_palette.dart';
 import 'package:shiju/ui/core/widgets/shichen_greeting_bar.dart';
@@ -81,9 +82,40 @@ void main() {
       expect(vm2.isFavorite('poem_01'), isTrue);
       expect(vm2.historyIds, isNotEmpty);
     });
+
+    test('微信扫码登录用户信息持久化保存、云端收藏合并与退出登录清理', () async {
+      final InMemoryStorageDriver driver = InMemoryStorageDriver();
+      final ShiJuViewModel vm1 = _createTestViewModel(driver: driver);
+      await vm1.initialize();
+      expect(vm1.isLoggedIn, isFalse);
+
+      final WeChatPresetAccount preset = WeChatPresetAccount.presets[1];
+      final int merged = await vm1.loginWithWeChat(
+        preset.toWeChatUser(),
+        cloudFavorites: preset.defaultFavorites,
+      );
+      expect(vm1.isLoggedIn, isTrue);
+      expect(vm1.currentUser?.nickname, '松风煮茗');
+      expect(merged, 2);
+      expect(vm1.isFavorite('poem_02'), isTrue);
+
+      // 重建 ViewModel 验证微信登录状态自动从持久化恢复
+      final ShiJuViewModel vm2 = _createTestViewModel(driver: driver);
+      await vm2.initialize();
+      expect(vm2.isLoggedIn, isTrue);
+      expect(vm2.currentUser?.nickname, '松风煮茗');
+      expect(vm2.currentUser?.sealText, '清欢');
+
+      // 退出登录验证清理
+      await vm2.logout();
+      expect(vm2.isLoggedIn, isFalse);
+      final ShiJuViewModel vm3 = _createTestViewModel(driver: driver);
+      await vm3.initialize();
+      expect(vm3.isLoggedIn, isFalse);
+    });
   });
 
-  group('拾句 (ShiJu) UI 与三大模块交互测试', () {
+  group('拾句 (ShiJu) UI 与四大模块交互测试', () {
     testWidgets('模块一：首页名句卡片展示、横竖排切换、漫游切换与空格快捷键', (
       WidgetTester tester,
     ) async {
@@ -240,6 +272,86 @@ void main() {
       await tester.pumpAndSettle();
       expect(viewModel.isDarkMode, isTrue);
       expect(viewModel.activePalette.name, '雾灰藕紫');
+    });
+
+    testWidgets('模块四：微信扫码登录弹窗、扫码确认与过期刷新流转、雅士名刺修撰与退出登录', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1024, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final ShiJuViewModel viewModel = _createTestViewModel();
+      await viewModel.initialize();
+
+      await tester.pumpWidget(ShiJuApp(viewModel: viewModel));
+      await tester.pumpAndSettle();
+
+      // 1. 初始未登录，顶栏显示「微信登录」按钮
+      expect(viewModel.isLoggedIn, isFalse);
+      expect(find.text('微信登录'), findsOneWidget);
+
+      // 2. 点击顶栏「微信登录」打开扫码弹窗
+      await tester.tap(find.byKey(const Key('header_auth_button')));
+      await tester.pumpAndSettle();
+      expect(find.text('微信扫码登录'), findsOneWidget);
+      expect(find.byKey(const Key('wechat_qr_code_box')), findsOneWidget);
+
+      // 3. 验证二维码过期与刷新流转
+      await tester.tap(find.byKey(const Key('simulate_expire_button')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('qr_mask_expired')), findsOneWidget);
+      expect(find.text('二维码已失效'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('qr_refresh_overlay_button')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('qr_mask_expired')), findsNothing);
+
+      // 4. 选择预设雅士「松风煮茗」并模拟手机微信扫码 -> 手机端确认登录
+      await tester.tap(find.byKey(const Key('preset_account_wx_shiju_02')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('simulate_scan_button')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('qr_mask_scanned')), findsOneWidget);
+      expect(find.text('扫码成功'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('confirm_wechat_login_button')));
+      await tester.pumpAndSettle();
+
+      // 5. 验证已登录状态、顶栏雅号展示与云端收藏合并
+      expect(viewModel.isLoggedIn, isTrue);
+      expect(viewModel.currentUser?.nickname, '松风煮茗');
+      expect(find.text('松风煮茗'), findsOneWidget);
+      expect(viewModel.favoriteIds.length, greaterThanOrEqualTo(2));
+
+      // 6. 点击顶栏雅士头像打开「雅士名刺」，修撰雅号与专属闲章
+      await tester.tap(find.byKey(const Key('header_auth_button')));
+      await tester.pumpAndSettle();
+      expect(find.text('雅士名刺'), findsOneWidget);
+      expect(find.text('微信已绑定'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('toggle_edit_profile_button')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('edit_nickname_input')),
+        '清溪散人',
+      );
+      await tester.enterText(
+        find.byKey(const Key('edit_seal_input')),
+        '听竹',
+      );
+      await tester.tap(find.byKey(const Key('save_profile_button')));
+      await tester.pumpAndSettle();
+
+      expect(viewModel.currentUser?.nickname, '清溪散人');
+      expect(viewModel.currentUser?.sealText, '听竹');
+
+      // 7. 点击「退出微信登录」，验证恢复未登录状态
+      await tester.tap(find.byKey(const Key('logout_wechat_button')));
+      await tester.pumpAndSettle();
+      expect(viewModel.isLoggedIn, isFalse);
+      expect(find.text('微信登录'), findsOneWidget);
     });
   });
 }
