@@ -1,3 +1,4 @@
+import '../../domain/models/auth_user_model.dart';
 import '../../domain/models/poem_model.dart';
 import '../services/curated_poetry_data.dart';
 import '../services/local_storage_service.dart';
@@ -96,4 +97,9 @@ class PoetryRepository {
 
   Future<void> saveIsDarkMode(bool isDark) =>
       _storageService.saveIsDarkMode(isDark);
+
+  Future<WeChatUser?> loadAuthUser() => _storageService.getAuthUser();
+
+  Future<void> saveAuthUser(WeChatUser? user) =>
+      _storageService.saveAuthUser(user);
 }

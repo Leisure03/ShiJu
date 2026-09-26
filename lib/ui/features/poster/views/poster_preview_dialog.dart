@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../../../domain/models/auth_user_model.dart';
 import '../../../../domain/models/poem_model.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/theme/traditional_palette.dart';
@@ -15,11 +16,13 @@ class PosterPreviewDialog extends StatefulWidget {
     required this.poem,
     required this.palette,
     required this.initialVertical,
+    this.currentUser,
   });
 
   final Poem poem;
   final TraditionalPalette palette;
   final bool initialVertical;
+  final WeChatUser? currentUser;
 
   /// 打开诗笺海报预览弹窗的便捷方法
   static Future<void> show(
@@ -27,6 +30,7 @@ class PosterPreviewDialog extends StatefulWidget {
     required Poem poem,
     required TraditionalPalette palette,
     required bool isVertical,
+    WeChatUser? currentUser,
   }) {
     return showGeneralDialog<void>(
       context: context,
@@ -43,6 +47,7 @@ class PosterPreviewDialog extends StatefulWidget {
           poem: poem,
           palette: palette,
           initialVertical: isVertical,
+          currentUser: currentUser,
         );
       },
       transitionBuilder: (
@@ -363,7 +368,11 @@ class _PosterPreviewDialogState extends State<PosterPreviewDialog> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: <Widget>[
-                                    Row(
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 4,
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
                                       children: <Widget>[
                                         const CinnabarSeal(
                                           text: '拾句珍藏',
@@ -374,9 +383,20 @@ class _PosterPreviewDialogState extends State<PosterPreviewDialog> {
                                             vertical: 2,
                                           ),
                                         ),
-                                        const SizedBox(width: 8),
+                                        if (widget.currentUser != null)
+                                          CinnabarSeal(
+                                            text: widget.currentUser!.sealText,
+                                            style: SealStyle.yang,
+                                            fontSize: 10.5,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 5.5,
+                                              vertical: 2,
+                                            ),
+                                          ),
                                         Text(
-                                          '拾句 · ShiJu',
+                                          widget.currentUser != null
+                                              ? '拾句 · ${widget.currentUser!.nickname} 雅藏'
+                                              : '拾句 · ShiJu',
                                           style: AppTypography.label(
                                             palette.inkText,
                                             fontSize: 13,

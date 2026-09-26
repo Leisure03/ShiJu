@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../domain/models/auth_user_model.dart';
 import '../core/theme/app_typography.dart';
 import '../core/theme/traditional_palette.dart';
 import '../core/theme/window_theme_sync.dart';
 import '../core/widgets/cinnabar_seal.dart';
 import '../core/widgets/shichen_greeting_bar.dart';
+import 'auth/views/user_profile_dialog.dart';
+import 'auth/views/wechat_qr_login_dialog.dart';
+import 'auth/widgets/wechat_qr_code_widget.dart';
 import 'collection/views/collection_view.dart';
 import 'explore/views/explore_view.dart';
 import 'home/views/home_view.dart';
@@ -321,6 +325,18 @@ class _ShiJuAppShellState extends State<ShiJuAppShell> {
                               ),
                             ),
                           ),
+
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            child: Container(
+                              width: 0.8,
+                              height: 13,
+                              color: palette.borderLine,
+                            ),
+                          ),
+
+                          // 书眉微信扫码登录 / 雅士名刺入口
+                          _buildHeaderAuthItem(context, palette),
                         ],
                       ),
                     ],
@@ -340,6 +356,95 @@ class _ShiJuAppShellState extends State<ShiJuAppShell> {
                 ],
               );
             },
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 顶栏书眉微信登录 / 雅士名刺微标
+  Widget _buildHeaderAuthItem(
+    BuildContext context,
+    TraditionalPalette palette,
+  ) {
+    final WeChatUser? user = widget.viewModel.currentUser;
+
+    if (user == null) {
+      return Tooltip(
+        message: '微信扫码登录 · 云端同步藏书阁',
+        child: InkWell(
+          key: const Key('header_auth_button'),
+          onTap: () {
+            WeChatQrLoginDialog.show(
+              context,
+              viewModel: widget.viewModel,
+            );
+          },
+          borderRadius: BorderRadius.circular(5),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4.5),
+            decoration: BoxDecoration(
+              color: kWeChatGreen.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(5),
+              border: Border.all(
+                color: kWeChatGreen.withValues(alpha: 0.28),
+                width: 0.8,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                const WeChatBrandIcon(
+                  size: 14,
+                  color: kWeChatBambooGreen,
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  '微信登录',
+                  style: AppTypography.label(
+                    palette.inkText,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Tooltip(
+      message: '雅士名刺：${user.nickname}（微信已同步）',
+      child: InkWell(
+        key: const Key('header_auth_button'),
+        onTap: () {
+          UserProfileDialog.show(
+            context,
+            viewModel: widget.viewModel,
+          );
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              OrientalScholarAvatar(
+                user: user,
+                size: 22,
+                showWeChatBadge: true,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                user.nickname,
+                style: AppTypography.label(
+                  palette.inkText,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ),
       ),

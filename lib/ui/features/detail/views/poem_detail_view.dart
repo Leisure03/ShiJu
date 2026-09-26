@@ -404,6 +404,7 @@ class _PoemDetailViewState extends State<PoemDetailView> {
                         poem: _activePoem,
                         palette: palette,
                         isVertical: isVertical,
+                        currentUser: widget.viewModel.currentUser,
                       );
                     },
                     icon: Icon(
