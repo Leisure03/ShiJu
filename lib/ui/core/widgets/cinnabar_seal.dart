@@ -32,15 +32,21 @@ class CinnabarSeal extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const Color cinnabar = TraditionalPalette.kCinnabarRed;
-    const Color xuanWhite = TraditionalPalette.kXuanPaperWhite;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color cinnabar = isDark
+        ? TraditionalPalette.kNaiWuQiangWei
+        : TraditionalPalette.kCinnabarRed;
+    final Color onSealText = isDark
+        ? TraditionalPalette.kInkBlack
+        : TraditionalPalette.kXuanPaperWhite;
 
     final bool isYin = style == SealStyle.yin;
     final Color bgColor =
-        isYin ? cinnabar : cinnabar.withValues(alpha: 0.06);
-    final Color textColor = isYin ? xuanWhite : cinnabar;
-    final Color borderColor =
-        isYin ? cinnabar.withValues(alpha: 0.92) : cinnabar.withValues(alpha: 0.78);
+        isYin ? cinnabar : cinnabar.withValues(alpha: isDark ? 0.14 : 0.08);
+    final Color textColor = isYin ? onSealText : cinnabar;
+    final Color borderColor = isYin
+        ? cinnabar.withValues(alpha: 0.92)
+        : cinnabar.withValues(alpha: 0.78);
 
     Widget content;
     if (isVertical && text.length > 1) {
@@ -96,7 +102,7 @@ class CinnabarSeal extends StatelessWidget {
           ),
           border: Border.all(
             color: isYin
-                ? xuanWhite.withValues(alpha: 0.32)
+                ? onSealText.withValues(alpha: 0.32)
                 : cinnabar.withValues(alpha: 0.28),
             width: 0.6,
           ),
