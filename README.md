@@ -1,17 +1,46 @@
-# shiju
+# 拾句 (ShiJu) · 东方极简古诗词推荐与深度赏析 App
 
-A new Flutter project.
+> **“醉后不知天在水，满船清梦压星河。”**  
+> 以句入诗，由诗及人 —— 融合新中式极简留白美学与中国传统色动态主题的古诗词漫游与深度赏析应用。
 
-## Getting Started
+---
 
-This project is a starting point for a Flutter application.
+## 核心特性
 
-A few resources to get you started if this is your first Flutter project:
+### 1. 东方美学视觉规范 (Design System)
+- **中国传统色动态主题（700ms 丝滑过渡）**：每首诗词绑定专属中国传统色，随诗词切换平滑渐变：
+  - **宣纸白** (`#F7F4ED`) · **天水碧** (`#D4E5E3`) · **松花黄** (`#F4F0D6`) · **暮山紫** (`#E4DFEC`) · **胭脂粉** (`#F2DFE1`) · **玄青色**（夜间模式 `#1A1C1E`）
+- **宋刻书眉与朱砂印章**：内置阳文印与阴文印篆刻组件（`#C03F3C` 朱砂红）、宣纸双栏内框及四角折角暗纹。
+- **古籍竖排 (`vertical-rl`) 与现代横排一键切换**：支持自右向左分列、乌丝栏细线与古籍竖排标点适配。
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+### 2. 三大核心功能模块
+- **首页 · 名句卡片流**：
+  - 十二时辰自动推算与应景导语（如「戌时 · 夜阑」）；
+  - 居中呈现单句精选诗笺卡片，支持点击平滑展开进入全诗详情页；
+  - 支持「偶遇下一句」、左右滑动手势、键盘 **空格键 (`Space`)** 随机漫游及方向键切换。
+- **诗词详情页 · 全诗与作者**：
+  - 完整诗词全文展示，自动将首页推荐名句以 **朱砂红底纹 + 下划线 +「拾句」印章** 高亮标记；
+  - **【译文与注释】** 与 **【创作背景与赏析】** 多维标签页；
+  - **作者生平小传与作品聚合**：展示诗人字号、生卒年与生平简介，并支持一键切换品读该作者收录的全部其他作品。
+- **寻章摘句、我的藏书阁与诗笺海报**：
+  - 实时关键词搜索（诗句/诗名/作者）与十大意境标签（`#咏月` `#思乡` `#豪放` `#婉约` `#山水` `#送别` `#哲理` `#星空` `#旷达`）筛选；
+  - 本地持久化保存「收藏列表」、「阅读历史」、「横竖排偏好」与「夜间模式」；
+  - 内置竖版新中式「诗笺海报」预览弹窗。
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+---
+
+## 快速运行与打包
+
+```powershell
+# 1. 获取依赖
+flutter pub get
+
+# 2. 运行自动化测试
+flutter test
+
+# 3. 在浏览器或桌面端启动调试
+flutter run -d chrome
+
+# 4. 一键打包生成 Windows 单文件可双击运行的 拾句_ShiJu.exe
+powershell -ExecutionPolicy Bypass -File .\launcher\build_exe.ps1
+```
