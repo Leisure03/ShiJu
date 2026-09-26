@@ -1,6 +1,22 @@
+param(
+    [string]$ProjectDir = (Split-Path -Parent $PSScriptRoot),
+    [string]$OutputDir = "",
+    [switch]$SkipFlutterBuild,
+    [switch]$CI
+)
+
 $ErrorActionPreference = "Stop"
 
-$projDir = "d:\antigravity_proj"
+$projDir = (Resolve-Path $ProjectDir).Path
+if ([string]::IsNullOrWhiteSpace($OutputDir)) {
+    $outDir = $projDir
+} else {
+    if (-not (Test-Path $OutputDir)) {
+        New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+    }
+    $outDir = (Resolve-Path $OutputDir).Path
+}
+
 $launcherDir = Join-Path $projDir "launcher"
 $webDir = Join-Path $projDir "web"
 $webBuildDir = Join-Path $projDir "build\web"
@@ -8,8 +24,8 @@ $zipPath = Join-Path $launcherDir "web_bundle.zip"
 $icoPath = Join-Path $launcherDir "shiju.ico"
 $csPath = Join-Path $launcherDir "ShiJuLauncher.cs"
 $cnName = "$([char]0x62FE)$([char]0x53E5)_ShiJu.exe"
-$exeOutPath = Join-Path $projDir $cnName
-$enExePath = Join-Path $projDir "ShiJu.exe"
+$exeOutPath = Join-Path $outDir $cnName
+$enExePath = Join-Path $outDir "ShiJu.exe"
 
 Add-Type -AssemblyName System.Drawing
 
@@ -87,9 +103,19 @@ $fsIco.Dispose()
 Write-Host "1. Icons updated (transparent favicon + Cinnabar Seal app icons)."
 
 # 3. Build Flutter Web Release
-Push-Location $projDir
-flutter build web --release
-Pop-Location
+if (-not $SkipFlutterBuild -or -not (Test-Path (Join-Path $webBuildDir "index.html"))) {
+    Push-Location $projDir
+    try {
+        flutter build web --release
+        if ($LASTEXITCODE -ne 0) {
+            throw "flutter build web --release failed with exit code: $LASTEXITCODE"
+        }
+    } finally {
+        Pop-Location
+    }
+} else {
+    Write-Host "Skipping flutter build web --release (reusing existing $webBuildDir)."
+}
 
 # 4. Pack build\web into web_bundle.zip
 if (Test-Path $zipPath) {
@@ -100,7 +126,9 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 Write-Host "2. Embedded bundle created: $zipPath"
 
 # Stop running instances if any so we can overwrite the exe
-Get-Process | Where-Object { $_.ProcessName -like "*ShiJu*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+if (-not $CI) {
+    Get-Process | Where-Object { $_.ProcessName -like "*ShiJu*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+}
 
 # 5. Compile ShiJuLauncher.cs into standalone Windows executable
 $csc = "C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"

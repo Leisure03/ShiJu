@@ -14,6 +14,9 @@ enum ShiJuNavTab {
 
   /// 我的藏书阁 · 收藏夹与阅读历史
   collection,
+
+  /// 天工流水线 · Jenkins CI/CD 可视化监控与构建中心
+  pipeline,
 }
 
 /// 「拾句（ShiJu）」核心状态管理 ViewModel
