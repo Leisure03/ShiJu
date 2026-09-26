@@ -288,9 +288,9 @@ class _ShiJuAppShellState extends State<ShiJuAppShell> {
                           ),
                           const SizedBox(width: 6),
 
-                          // 极简日夜切换：玄青夜间 / 日间传统色
+                          // 极简双生配色切换：雾灰藕紫 / 奶雾蔷薇
                           Tooltip(
-                            message: isDark ? '切换为日间传统色' : '切换为玄青夜间模式',
+                            message: isDark ? '切换为奶雾蔷薇配色' : '切换为雾灰藕紫配色',
                             child: InkWell(
                               key: const Key('toggle_dark_mode_button'),
                               onTap: widget.viewModel.toggleDarkMode,
@@ -309,12 +309,12 @@ class _ShiJuAppShellState extends State<ShiJuAppShell> {
                                           : Icons.nights_stay_outlined,
                                       size: 14,
                                       color: isDark
-                                          ? TraditionalPalette.kMoonWhite
+                                          ? TraditionalPalette.kNaiWuQiangWei
                                           : palette.secondaryText,
                                     ),
                                     const SizedBox(width: 4),
                                     Text(
-                                      isDark ? '日间' : '玄青',
+                                      isDark ? '蔷薇' : '藕紫',
                                       style: AppTypography.label(
                                         palette.secondaryText,
                                         fontSize: 12.5,

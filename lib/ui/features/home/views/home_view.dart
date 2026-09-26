@@ -65,7 +65,7 @@ class _HomeViewState extends State<HomeView>
           '已复制名句：「${poem.featuredQuote}」',
           style: AppTypography.label(TraditionalPalette.kXuanPaperWhite),
         ),
-        backgroundColor: palette.inkText,
+        backgroundColor: TraditionalPalette.kInkBlack,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
       ),
@@ -83,12 +83,13 @@ class _HomeViewState extends State<HomeView>
       SnackBar(
         content: Text(
           isNowFav
-              ? '朱砂落印 · 已将《${poem.title}》收入藏书阁'
+              ? '蔷薇落印 · 已将《${poem.title}》收入藏书阁'
               : '已从藏书阁移除《${poem.title}》',
           style: AppTypography.label(TraditionalPalette.kXuanPaperWhite),
         ),
-        backgroundColor:
-            isNowFav ? TraditionalPalette.kCinnabarRed : palette.inkText,
+        backgroundColor: isNowFav
+            ? TraditionalPalette.kCinnabarRed
+            : TraditionalPalette.kInkBlack,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 1),
       ),
@@ -376,17 +377,19 @@ class _HomeViewState extends State<HomeView>
                         vertical: 3.5,
                       ),
                       decoration: BoxDecoration(
-                        color: palette.themeAccent.withValues(alpha: 0.09),
+                        color: palette.themeAccent.withValues(alpha: 0.14),
                         borderRadius: BorderRadius.circular(4),
                         border: Border.all(
-                          color: palette.themeAccent.withValues(alpha: 0.22),
+                          color: palette.themeAccent.withValues(alpha: 0.36),
                           width: 0.8,
                         ),
                       ),
                       child: Text(
                         '#$tag',
                         style: AppTypography.label(
-                          palette.themeAccent,
+                          palette.isDark
+                              ? palette.themeAccent
+                              : palette.secondaryText,
                           fontSize: 12,
                         ),
                       ),
@@ -454,7 +457,7 @@ class _HomeViewState extends State<HomeView>
               onPressed: widget.viewModel.roamRandomQuote,
               style: FilledButton.styleFrom(
                 backgroundColor: palette.themeAccent,
-                foregroundColor: TraditionalPalette.kXuanPaperWhite,
+                foregroundColor: palette.onThemeAccent,
                 elevation: 0,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 24,
@@ -468,7 +471,7 @@ class _HomeViewState extends State<HomeView>
               label: Text(
                 '偶遇下一句',
                 style: AppTypography.label(
-                  TraditionalPalette.kXuanPaperWhite,
+                  palette.onThemeAccent,
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),

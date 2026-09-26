@@ -125,7 +125,7 @@ class _PoemDetailViewState extends State<PoemDetailView> {
           '已复制《${poem.title}》全诗至剪贴板',
           style: AppTypography.label(TraditionalPalette.kXuanPaperWhite),
         ),
-        backgroundColor: palette.inkText,
+        backgroundColor: TraditionalPalette.kInkBlack,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
       ),
@@ -310,7 +310,7 @@ class _PoemDetailViewState extends State<PoemDetailView> {
                   ),
                   const SizedBox(width: 8),
 
-                  // 收藏按钮（朱砂红豆/印章点亮）
+                  // 收藏按钮（印章点亮）
                   Tooltip(
                     message: isFavorited ? '取消收藏' : '收入藏书阁',
                     child: InkWell(
@@ -331,7 +331,7 @@ class _PoemDetailViewState extends State<PoemDetailView> {
                             ),
                             backgroundColor: added
                                 ? TraditionalPalette.kCinnabarRed
-                                : palette.inkText,
+                                : TraditionalPalette.kInkBlack,
                             behavior: SnackBarBehavior.floating,
                             duration: const Duration(seconds: 1),
                           ),
@@ -364,7 +364,7 @@ class _PoemDetailViewState extends State<PoemDetailView> {
                                   : Icons.favorite_border_rounded,
                               size: 15,
                               color: isFavorited
-                                  ? TraditionalPalette.kXuanPaperWhite
+                                  ? palette.onCinnabar
                                   : palette.cinnabarRed,
                             ),
                             const SizedBox(width: 4),
@@ -372,7 +372,7 @@ class _PoemDetailViewState extends State<PoemDetailView> {
                               isFavorited ? '已藏' : '珍藏',
                               style: AppTypography.label(
                                 isFavorited
-                                    ? TraditionalPalette.kXuanPaperWhite
+                                    ? palette.onCinnabar
                                     : palette.inkText,
                                 fontSize: 12,
                               ),

@@ -116,7 +116,7 @@ class _PosterPreviewDialogState extends State<PosterPreviewDialog> {
           '已复制诗笺佳句与出处，可粘贴分享予知音',
           style: AppTypography.label(TraditionalPalette.kXuanPaperWhite),
         ),
-        backgroundColor: widget.palette.inkText,
+        backgroundColor: TraditionalPalette.kInkBlack,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
       ),

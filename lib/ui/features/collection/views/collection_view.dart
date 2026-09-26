@@ -336,7 +336,7 @@ class _CollectionViewState extends State<CollectionView> {
           label,
           style: AppTypography.label(
             isSelected
-                ? TraditionalPalette.kXuanPaperWhite
+                ? palette.onThemeAccent
                 : palette.secondaryText,
             fontSize: 12.5,
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
@@ -353,7 +353,7 @@ class _CollectionViewState extends State<CollectionView> {
     required bool isFavoritesTab,
   }) {
     final TraditionalPalette poemPalette =
-        TraditionalPalette.resolve(poem.paletteType);
+        widget.viewModel.paletteForPoem(poem);
 
     return XuanPaperCard(
       key: Key('collection_card_${poem.id}'),
@@ -451,7 +451,7 @@ class _CollectionViewState extends State<CollectionView> {
                           TraditionalPalette.kXuanPaperWhite,
                         ),
                       ),
-                      backgroundColor: palette.inkText,
+                      backgroundColor: TraditionalPalette.kInkBlack,
                       behavior: SnackBarBehavior.floating,
                       duration: const Duration(seconds: 1),
                     ),
