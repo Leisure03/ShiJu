@@ -30,7 +30,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Web PWA for iPhone / Mobile
-        run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
+        run: flutter build web --release --base-href "/${{ github.event.repository.name }}/" --no-web-resources-cdn
 
       - name: Add .nojekyll and 404.html SPA fallback
         run: |

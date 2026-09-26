@@ -8,7 +8,7 @@ Set-Location $ProjectRoot
 
 if (-not $SkipBuild -or -not (Test-Path "build\web\main.dart.js")) {
     Write-Host "[1/3] Building ShiJu Web PWA for GitHub Pages (/ShiJu/)..." -ForegroundColor Cyan
-    flutter build web --release --base-href "/ShiJu/"
+    flutter build web --release --base-href "/ShiJu/" --no-web-resources-cdn
     New-Item -Path "build\web\.nojekyll" -ItemType File -Force | Out-Null
     Copy-Item "build\web\index.html" "build\web\404.html" -Force
 }
