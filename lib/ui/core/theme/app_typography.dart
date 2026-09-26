@@ -9,18 +9,21 @@ class AppTypography {
 
   static const String primaryFontFamily = 'Noto Serif SC';
 
-  /// 中文字体回退栈：优先使用 CDN 引入的思源宋体与霞鹜文楷，并兼容各平台系统宋刻/楷书字体
+  /// 中文字体回退栈：优先使用 CDN 引入的思源宋体与霞鹜文楷，并兼容 iOS / 桌面端各平台系统宋刻/楷书与苹方字体
   static const List<String> chineseSerifFallback = <String>[
     'LXGW WenKai',
     'Noto Serif SC',
     'Source Han Serif SC',
     'Songti SC',
     'STSong',
+    'STKaiti',
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Heiti SC',
     'FZShuSong-Z01S',
     'SimSun',
     'NSimSun',
     'KaiTi',
-    'STKaiti',
     'serif',
   ];
 
