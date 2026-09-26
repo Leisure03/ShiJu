@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$projDir = "d:\antigravity_proj"
+$projDir = Split-Path -Parent $PSScriptRoot
 $launcherDir = Join-Path $projDir "launcher"
 $webDir = Join-Path $projDir "web"
 $webBuildDir = Join-Path $projDir "build\web"
@@ -88,7 +88,7 @@ Write-Host "1. Icons updated (transparent favicon + Cinnabar Seal app icons)."
 
 # 3. Build Flutter Web Release
 Push-Location $projDir
-flutter build web --release
+flutter build web --release --no-web-resources-cdn
 Pop-Location
 
 # 4. Pack build\web into web_bundle.zip
@@ -120,6 +120,11 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Copy-Item $exeOutPath $enExePath -Force
+
+if (Test-Path "D:\antigravity_proj") {
+    Copy-Item $exeOutPath (Join-Path "D:\antigravity_proj" $cnName) -Force -ErrorAction SilentlyContinue
+    Copy-Item $enExePath (Join-Path "D:\antigravity_proj" "ShiJu.exe") -Force -ErrorAction SilentlyContinue
+}
 
 Write-Host "3. Build succeeded!"
 Get-Item $exeOutPath, $enExePath | Select-Object FullName, Length, LastWriteTime

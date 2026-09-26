@@ -43,4 +43,7 @@ flutter run -d chrome
 
 # 4. 一键打包生成 Windows 单文件可双击运行的 拾句_ShiJu.exe
 powershell -ExecutionPolicy Bypass -File .\launcher\build_exe.ps1
+
+# 5. 一键启动 iPhone 17 局域网 PWA 独立全屏服务（手机 Safari 添加到主屏幕）
+powershell -ExecutionPolicy Bypass -File .\launcher\serve_iphone.ps1 -Port 8080
 ```
