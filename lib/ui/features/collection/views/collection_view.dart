@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import '../../../../domain/models/auth_user_model.dart';
 import '../../../../domain/models/poem_model.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/theme/traditional_palette.dart';
 import '../../../core/widgets/cinnabar_seal.dart';
 import '../../../core/widgets/xuan_paper_card.dart';
+import '../../auth/views/user_profile_dialog.dart';
+import '../../auth/views/wechat_qr_login_dialog.dart';
+import '../../auth/widgets/wechat_qr_code_widget.dart';
 import '../../detail/views/poem_detail_view.dart';
 import '../../shiju_view_model.dart';
 
@@ -39,7 +43,7 @@ class _CollectionViewState extends State<CollectionView> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              // 顶部藏书阁抬头与切换栏
+              // 顶部藏书阁抬头、微信雅士云端状态与切换栏
               XuanPaperCard(
                 palette: palette,
                 padding: const EdgeInsets.symmetric(
@@ -47,50 +51,63 @@ class _CollectionViewState extends State<CollectionView> {
                   vertical: 16,
                 ),
                 showCornerOrnaments: false,
-                child: Wrap(
-                  alignment: WrapAlignment.spaceBetween,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 16,
-                  runSpacing: 12,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 16,
+                      runSpacing: 12,
                       children: <Widget>[
-                        const CinnabarSeal(
-                          text: '藏书阁',
-                          style: SealStyle.yin,
-                          fontSize: 12,
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            const CinnabarSeal(
+                              text: '藏书阁',
+                              style: SealStyle.yin,
+                              fontSize: 12,
+                            ),
+                            const SizedBox(width: 12),
+                            Flexible(
+                              child: Text(
+                                widget.viewModel.isLoggedIn
+                                    ? '已开启微信云端同步 · 跨端实时珍藏诗笺与足迹'
+                                    : '收录心仪诗笺与漫游足迹（本地持久保存）',
+                                style: AppTypography.attribution(
+                                  palette.secondaryText,
+                                  fontSize: 13.5,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 12),
-                        Text(
-                          '收录心仪诗笺与漫游足迹（本地持久保存）',
-                          style: AppTypography.attribution(
-                            palette.secondaryText,
-                            fontSize: 13.5,
-                          ),
-                        ),
-                      ],
-                    ),
 
-                    // 收藏夹 / 阅读历史切换按钮组
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        _buildSubTabChip(
-                          key: const Key('collection_tab_favorites'),
-                          index: 0,
-                          label: '雅藏 · 收藏夹 (${favorites.length})',
-                          palette: palette,
-                        ),
-                        const SizedBox(width: 8),
-                        _buildSubTabChip(
-                          key: const Key('collection_tab_history'),
-                          index: 1,
-                          label: '足迹 · 阅读历史 (${history.length})',
-                          palette: palette,
+                        // 收藏夹 / 阅读历史切换按钮组
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: <Widget>[
+                            _buildSubTabChip(
+                              key: const Key('collection_tab_favorites'),
+                              index: 0,
+                              label: '雅藏 · 收藏夹 (${favorites.length})',
+                              palette: palette,
+                            ),
+                            _buildSubTabChip(
+                              key: const Key('collection_tab_history'),
+                              index: 1,
+                              label: '足迹 · 阅读历史 (${history.length})',
+                              palette: palette,
+                            ),
+                          ],
                         ),
                       ],
                     ),
+                    const SizedBox(height: 12),
+                    Divider(color: palette.borderLine, height: 1),
+                    const SizedBox(height: 12),
+                    _buildWeChatScholarBanner(context, palette),
                   ],
                 ),
               ),
@@ -120,6 +137,173 @@ class _CollectionViewState extends State<CollectionView> {
           ),
         ),
       ),
+    );
+  }
+
+  /// 藏书阁微信扫码登录 / 已登录雅士名刺横幅
+  Widget _buildWeChatScholarBanner(
+    BuildContext context,
+    TraditionalPalette palette,
+  ) {
+    final WeChatUser? user = widget.viewModel.currentUser;
+
+    if (user == null) {
+      return Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 12,
+        runSpacing: 8,
+        children: <Widget>[
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const WeChatBrandIcon(
+                size: 16,
+                color: kWeChatBambooGreen,
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  '尚未登录微信 · 扫码登录即可将藏书阁同步至云端并解锁专属朱砂闲章',
+                  style: AppTypography.label(
+                    palette.mutedText,
+                    fontSize: 12.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          FilledButton.icon(
+            key: const Key('collection_wechat_login_button'),
+            onPressed: () {
+              WeChatQrLoginDialog.show(
+                context,
+                viewModel: widget.viewModel,
+              );
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: kWeChatBambooGreen,
+              foregroundColor: TraditionalPalette.kXuanPaperWhite,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(6),
+              ),
+            ),
+            icon: const Icon(Icons.qr_code_scanner_rounded, size: 15),
+            label: Text(
+              '微信扫码登录',
+              style: AppTypography.label(
+                TraditionalPalette.kXuanPaperWhite,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Wrap(
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 12,
+      runSpacing: 8,
+      children: <Widget>[
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            OrientalScholarAvatar(user: user, size: 30),
+            const SizedBox(width: 10),
+            Text(
+              user.nickname,
+              style: AppTypography.label(
+                palette.inkText,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '· ${user.poeticTitle}',
+              style: AppTypography.attribution(
+                palette.secondaryText,
+                fontSize: 12.5,
+              ),
+            ),
+            const SizedBox(width: 10),
+            CinnabarSeal(
+              text: user.sealText,
+              style: SealStyle.yang,
+              fontSize: 10.5,
+              padding: const EdgeInsets.symmetric(horizontal: 5.5, vertical: 2),
+            ),
+          ],
+        ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: kWeChatGreen.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  const Icon(
+                    Icons.cloud_done_rounded,
+                    size: 13,
+                    color: kWeChatBambooGreen,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '微信云端已同步',
+                    style: AppTypography.label(
+                      kWeChatBambooGreen,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              key: const Key('collection_user_profile_button'),
+              onPressed: () {
+                UserProfileDialog.show(
+                  context,
+                  viewModel: widget.viewModel,
+                );
+              },
+              style: OutlinedButton.styleFrom(
+                foregroundColor: palette.inkText,
+                side: BorderSide(color: palette.borderLine),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(5),
+                ),
+              ),
+              icon: const Icon(Icons.badge_outlined, size: 14),
+              label: Text(
+                '雅士名刺',
+                style: AppTypography.label(
+                  palette.inkText,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 

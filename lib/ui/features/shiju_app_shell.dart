@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../domain/models/auth_user_model.dart';
 import '../core/theme/app_typography.dart';
 import '../core/theme/traditional_palette.dart';
 import '../core/theme/window_theme_sync.dart';
 import '../core/widgets/cinnabar_seal.dart';
 import '../core/widgets/shichen_greeting_bar.dart';
+import 'auth/views/user_profile_dialog.dart';
+import 'auth/views/wechat_qr_login_dialog.dart';
+import 'auth/widgets/wechat_qr_code_widget.dart';
 import 'collection/views/collection_view.dart';
 import 'explore/views/explore_view.dart';
 import 'home/views/home_view.dart';
@@ -138,211 +142,270 @@ class _ShiJuAppShellState extends State<ShiJuAppShell> {
     final int favCount = widget.viewModel.favoriteIds.length;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 10, 24, 4),
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 960),
           child: LayoutBuilder(
             builder: (BuildContext context, BoxConstraints constraints) {
-              final bool isWide = constraints.maxWidth >= 700;
+              final bool isWide = constraints.maxWidth >= 740;
+              final bool isCompactMobile = constraints.maxWidth < 580;
+
+              final Widget brandLogo = InkWell(
+                onTap: () => widget.viewModel.setActiveTab(ShiJuNavTab.home),
+                borderRadius: BorderRadius.circular(4),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      const CinnabarSeal(
+                        text: '拾句',
+                        style: SealStyle.yin,
+                        fontSize: 11.5,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 5.5,
+                          vertical: 2,
+                        ),
+                      ),
+                      const SizedBox(width: 9),
+                      Text(
+                        'ShiJu',
+                        style: AppTypography.attribution(
+                          palette.mutedText,
+                          fontSize: 12.5,
+                        ).copyWith(letterSpacing: 1.8),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+
+              final Widget navTabsRow = Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: <Widget>[
+                  _buildMinimalNavTab(
+                    key: const Key('nav_tab_home'),
+                    label: '拾句',
+                    isSelected: activeTab == ShiJuNavTab.home,
+                    palette: palette,
+                    onTap: () =>
+                        widget.viewModel.setActiveTab(ShiJuNavTab.home),
+                  ),
+                  SizedBox(width: isCompactMobile ? 8 : 18),
+                  _buildMinimalNavTab(
+                    key: const Key('nav_tab_explore'),
+                    label: '寻章摘句',
+                    isSelected: activeTab == ShiJuNavTab.explore,
+                    palette: palette,
+                    onTap: () =>
+                        widget.viewModel.setActiveTab(ShiJuNavTab.explore),
+                  ),
+                  SizedBox(width: isCompactMobile ? 8 : 18),
+                  _buildMinimalNavTab(
+                    key: const Key('nav_tab_collection'),
+                    label: favCount > 0 ? '藏书阁·$favCount' : '藏书阁',
+                    isSelected: activeTab == ShiJuNavTab.collection,
+                    palette: palette,
+                    onTap: () =>
+                        widget.viewModel.setActiveTab(ShiJuNavTab.collection),
+                  ),
+                  SizedBox(width: isCompactMobile ? 8 : 18),
+                  _buildMinimalNavTab(
+                    key: const Key('nav_tab_pipeline'),
+                    label: '流水线',
+                    isSelected: activeTab == ShiJuNavTab.pipeline,
+                    palette: palette,
+                    onTap: () =>
+                        widget.viewModel.setActiveTab(ShiJuNavTab.pipeline),
+                  ),
+                ],
+              );
+
+              final Widget togglesRow = Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: <Widget>[
+                  // 极简版式切换：竖排 / 横排
+                  Tooltip(
+                    message: isVertical
+                        ? '当前：古籍竖排（点击切换为现代横排）'
+                        : '当前：现代横排（点击切换为古籍竖排）',
+                    child: InkWell(
+                      key: const Key('toggle_layout_button'),
+                      onTap: widget.viewModel.toggleVerticalLayout,
+                      borderRadius: BorderRadius.circular(4),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 5,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Icon(
+                              isVertical
+                                  ? Icons.vertical_distribute_rounded
+                                  : Icons.format_align_center_rounded,
+                              size: 14,
+                              color: palette.themeAccent,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              isVertical ? '竖排' : '横排',
+                              style: AppTypography.label(
+                                palette.secondaryText,
+                                fontSize: 12.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+
+                  // 极简双生配色切换：雾灰藕紫 / 奶雾蔷薇
+                  Tooltip(
+                    message: isDark ? '切换为奶雾蔷薇配色' : '切换为雾灰藕紫配色',
+                    child: InkWell(
+                      key: const Key('toggle_dark_mode_button'),
+                      onTap: widget.viewModel.toggleDarkMode,
+                      borderRadius: BorderRadius.circular(4),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 5,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Icon(
+                              isDark
+                                  ? Icons.wb_sunny_outlined
+                                  : Icons.nights_stay_outlined,
+                              size: 14,
+                              color: isDark
+                                  ? TraditionalPalette.kNaiWuQiangWei
+                                  : palette.secondaryText,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              isDark ? '蔷薇' : '藕紫',
+                              style: AppTypography.label(
+                                palette.secondaryText,
+                                fontSize: 12.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isCompactMobile ? 6 : 10,
+                    ),
+                    child: Container(
+                      width: 0.8,
+                      height: 13,
+                      color: palette.borderLine,
+                    ),
+                  ),
+
+                  // 书眉微信扫码登录 / 雅士名刺入口
+                  _buildHeaderAuthItem(context, palette),
+                ],
+              );
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: <Widget>[
-                      // 书眉左栏：朱砂方印「拾句」 + 时辰导语
-                      Expanded(
-                        child: Row(
+                  if (isCompactMobile) ...<Widget>[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: <Widget>[
+                        brandLogo,
+                        togglesRow,
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: <Widget>[
+                        Flexible(
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: navTabsRow,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: ShichenGreetingBar(palette: palette),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ] else ...<Widget>[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: <Widget>[
+                        // 书眉左栏：朱砂方印「拾句」 + 时辰导语
+                        Expanded(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: <Widget>[
+                              brandLogo,
+                              if (isWide) ...<Widget>[
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                  ),
+                                                                child: Container(
+                                    width: 0.8,
+                                    height: 13,
+                                    color: palette.borderLine,
+                                  ),
+                                ),
+                                Expanded(
+                                  child: ShichenGreetingBar(palette: palette),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+
+                        // 书眉右栏：极简墨字导航 + 竖排/夜间轻量开关 + 微信登录
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: <Widget>[
-                            InkWell(
-                              onTap: () => widget.viewModel
-                                  .setActiveTab(ShiJuNavTab.home),
-                              borderRadius: BorderRadius.circular(4),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 2,
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: <Widget>[
-                                    const CinnabarSeal(
-                                      text: '拾句',
-                                      style: SealStyle.yin,
-                                      fontSize: 11.5,
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: 5.5,
-                                        vertical: 2,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 9),
-                                    Text(
-                                      'ShiJu',
-                                      style: AppTypography.attribution(
-                                        palette.mutedText,
-                                        fontSize: 12.5,
-                                      ).copyWith(letterSpacing: 1.8),
-                                    ),
-                                  ],
-                                ),
+                            navTabsRow,
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 14),
+                              child: Container(
+                                width: 0.8,
+                                height: 13,
+                                color: palette.borderLine,
                               ),
                             ),
-                            if (isWide) ...<Widget>[
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                ),
-                                child: Container(
-                                  width: 0.8,
-                                  height: 13,
-                                  color: palette.borderLine,
-                                ),
-                              ),
-                              Expanded(
-                                child: ShichenGreetingBar(palette: palette),
-                              ),
-                            ],
+                            togglesRow,
                           ],
                         ),
-                      ),
-
-                      // 书眉右栏：极简墨字导航 + 竖排/夜间轻量开关
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: <Widget>[
-                          _buildMinimalNavTab(
-                            key: const Key('nav_tab_home'),
-                            label: '拾句',
-                            isSelected: activeTab == ShiJuNavTab.home,
-                            palette: palette,
-                            onTap: () => widget.viewModel
-                                .setActiveTab(ShiJuNavTab.home),
-                          ),
-                          const SizedBox(width: 18),
-                          _buildMinimalNavTab(
-                            key: const Key('nav_tab_explore'),
-                            label: '寻章摘句',
-                            isSelected: activeTab == ShiJuNavTab.explore,
-                            palette: palette,
-                            onTap: () => widget.viewModel
-                                .setActiveTab(ShiJuNavTab.explore),
-                          ),
-                          const SizedBox(width: 18),
-                          _buildMinimalNavTab(
-                            key: const Key('nav_tab_collection'),
-                            label: favCount > 0 ? '藏书阁·$favCount' : '藏书阁',
-                            isSelected: activeTab == ShiJuNavTab.collection,
-                            palette: palette,
-                            onTap: () => widget.viewModel
-                                .setActiveTab(ShiJuNavTab.collection),
-                          ),
-                          const SizedBox(width: 18),
-                          _buildMinimalNavTab(
-                            key: const Key('nav_tab_pipeline'),
-                            label: '流水线',
-                            isSelected: activeTab == ShiJuNavTab.pipeline,
-                            palette: palette,
-                            onTap: () => widget.viewModel
-                                .setActiveTab(ShiJuNavTab.pipeline),
-                          ),
-
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 14),
-                            child: Container(
-                              width: 0.8,
-                              height: 13,
-                              color: palette.borderLine,
-                            ),
-                          ),
-
-                          // 极简版式切换：竖排 / 横排
-                          Tooltip(
-                            message: isVertical
-                                ? '当前：古籍竖排（点击切换为现代横排）'
-                                : '当前：现代横排（点击切换为古籍竖排）',
-                            child: InkWell(
-                              key: const Key('toggle_layout_button'),
-                              onTap: widget.viewModel.toggleVerticalLayout,
-                              borderRadius: BorderRadius.circular(4),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 5,
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: <Widget>[
-                                    Icon(
-                                      isVertical
-                                          ? Icons.vertical_distribute_rounded
-                                          : Icons.format_align_center_rounded,
-                                      size: 14,
-                                      color: palette.themeAccent,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      isVertical ? '竖排' : '横排',
-                                      style: AppTypography.label(
-                                        palette.secondaryText,
-                                        fontSize: 12.5,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-
-                          // 极简双生配色切换：雾灰藕紫 / 奶雾蔷薇
-                          Tooltip(
-                            message: isDark ? '切换为奶雾蔷薇配色' : '切换为雾灰藕紫配色',
-                            child: InkWell(
-                              key: const Key('toggle_dark_mode_button'),
-                              onTap: widget.viewModel.toggleDarkMode,
-                              borderRadius: BorderRadius.circular(4),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 5,
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: <Widget>[
-                                    Icon(
-                                      isDark
-                                          ? Icons.wb_sunny_outlined
-                                          : Icons.nights_stay_outlined,
-                                      size: 14,
-                                      color: isDark
-                                          ? TraditionalPalette.kNaiWuQiangWei
-                                          : palette.secondaryText,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      isDark ? '蔷薇' : '藕紫',
-                                      style: AppTypography.label(
-                                        palette.secondaryText,
-                                        fontSize: 12.5,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                      ],
+                    ),
+                    if (!isWide) ...<Widget>[
+                      const SizedBox(height: 8),
+                      ShichenGreetingBar(palette: palette),
                     ],
-                  ),
-
-                  if (!isWide) ...<Widget>[
-                    const SizedBox(height: 8),
-                    ShichenGreetingBar(palette: palette),
                   ],
 
                   const SizedBox(height: 8),
@@ -354,6 +417,95 @@ class _ShiJuAppShellState extends State<ShiJuAppShell> {
                 ],
               );
             },
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 顶栏书眉微信登录 / 雅士名刺微标
+  Widget _buildHeaderAuthItem(
+    BuildContext context,
+    TraditionalPalette palette,
+  ) {
+    final WeChatUser? user = widget.viewModel.currentUser;
+
+    if (user == null) {
+      return Tooltip(
+        message: '微信扫码登录 · 云端同步藏书阁',
+        child: InkWell(
+          key: const Key('header_auth_button'),
+          onTap: () {
+            WeChatQrLoginDialog.show(
+              context,
+              viewModel: widget.viewModel,
+            );
+          },
+          borderRadius: BorderRadius.circular(5),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4.5),
+            decoration: BoxDecoration(
+              color: kWeChatGreen.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(5),
+              border: Border.all(
+                color: kWeChatGreen.withValues(alpha: 0.28),
+                width: 0.8,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                const WeChatBrandIcon(
+                  size: 14,
+                  color: kWeChatBambooGreen,
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  '微信登录',
+                  style: AppTypography.label(
+                    palette.inkText,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Tooltip(
+      message: '雅士名刺：${user.nickname}（微信已同步）',
+      child: InkWell(
+        key: const Key('header_auth_button'),
+        onTap: () {
+          UserProfileDialog.show(
+            context,
+            viewModel: widget.viewModel,
+          );
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              OrientalScholarAvatar(
+                user: user,
+                size: 22,
+                showWeChatBadge: true,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                user.nickname,
+                style: AppTypography.label(
+                  palette.inkText,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ),
       ),

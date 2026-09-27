@@ -106,7 +106,7 @@ Write-Host "1. Icons updated (transparent favicon + Cinnabar Seal app icons)."
 if (-not $SkipFlutterBuild -or -not (Test-Path (Join-Path $webBuildDir "index.html"))) {
     Push-Location $projDir
     try {
-        flutter build web --release
+        flutter build web --release --no-web-resources-cdn
         if ($LASTEXITCODE -ne 0) {
             throw "flutter build web --release failed with exit code: $LASTEXITCODE"
         }
@@ -148,6 +148,11 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Copy-Item $exeOutPath $enExePath -Force
+
+if (Test-Path "D:\antigravity_proj") {
+    Copy-Item $exeOutPath (Join-Path "D:\antigravity_proj" $cnName) -Force -ErrorAction SilentlyContinue
+    Copy-Item $enExePath (Join-Path "D:\antigravity_proj" "ShiJu.exe") -Force -ErrorAction SilentlyContinue
+}
 
 Write-Host "3. Build succeeded!"
 Get-Item $exeOutPath, $enExePath | Select-Object FullName, Length, LastWriteTime

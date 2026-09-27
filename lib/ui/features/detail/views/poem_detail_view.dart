@@ -238,7 +238,7 @@ class _PoemDetailViewState extends State<PoemDetailView> {
     bool isVertical,
   ) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 780),
@@ -251,168 +251,174 @@ class _PoemDetailViewState extends State<PoemDetailView> {
                 style: TextButton.styleFrom(
                   foregroundColor: palette.inkText,
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
+                    horizontal: 10,
                     vertical: 8,
                   ),
                 ),
-                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 16),
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 15),
                 label: Text(
                   '返回拾句',
                   style: AppTypography.label(
                     palette.inkText,
-                    fontSize: 14,
+                    fontSize: 13.5,
                   ),
                 ),
               ),
 
               // 右侧操作组：横竖排切换、收藏、复制全诗、海报分享
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  // 横排/竖排切换
-                  Tooltip(
-                    message: isVertical ? '切换为现代横排' : '切换为古籍竖排',
-                    child: InkWell(
-                      onTap: widget.viewModel.toggleVerticalLayout,
-                      borderRadius: BorderRadius.circular(6),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: palette.cardSurface.withValues(alpha: 0.75),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: palette.borderLine),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            Icon(
-                              isVertical
-                                  ? Icons.vertical_distribute_rounded
-                                  : Icons.format_align_center_rounded,
-                              size: 15,
-                              color: palette.themeAccent,
-                            ),
-                            const SizedBox(width: 5),
-                            Text(
-                              isVertical ? '古籍竖排' : '现代横排',
-                              style: AppTypography.label(
-                                palette.inkText,
-                                fontSize: 12,
+              Flexible(
+                child: Wrap(
+                  alignment: WrapAlignment.end,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: <Widget>[
+                    // 横排/竖排切换
+                    Tooltip(
+                      message: isVertical ? '切换为现代横排' : '切换为古籍竖排',
+                      child: InkWell(
+                        onTap: widget.viewModel.toggleVerticalLayout,
+                        borderRadius: BorderRadius.circular(6),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 9,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: palette.cardSurface.withValues(alpha: 0.75),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: palette.borderLine),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              Icon(
+                                isVertical
+                                    ? Icons.vertical_distribute_rounded
+                                    : Icons.format_align_center_rounded,
+                                size: 14.5,
+                                color: palette.themeAccent,
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 4),
+                              Text(
+                                isVertical ? '古籍竖排' : '现代横排',
+                                style: AppTypography.label(
+                                  palette.inkText,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
 
-                  // 收藏按钮（印章点亮）
-                  Tooltip(
-                    message: isFavorited ? '取消收藏' : '收入藏书阁',
-                    child: InkWell(
-                      key: const Key('detail_favorite_button'),
-                      onTap: () async {
-                        final bool added = await widget.viewModel
-                            .toggleFavorite(_activePoem.id);
-                        if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              added
-                                  ? '已将《${_activePoem.title}》收入藏书阁'
-                                  : '已从藏书阁移除《${_activePoem.title}》',
-                              style: AppTypography.label(
-                                TraditionalPalette.kXuanPaperWhite,
+                    // 收藏按钮（印章点亮）
+                    Tooltip(
+                      message: isFavorited ? '取消收藏' : '收入藏书阁',
+                      child: InkWell(
+                        key: const Key('detail_favorite_button'),
+                        onTap: () async {
+                          final bool added = await widget.viewModel
+                              .toggleFavorite(_activePoem.id);
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                added
+                                    ? '已将《${_activePoem.title}》收入藏书阁'
+                                    : '已从藏书阁移除《${_activePoem.title}》',
+                                style: AppTypography.label(
+                                  TraditionalPalette.kXuanPaperWhite,
+                                ),
                               ),
+                              backgroundColor: added
+                                  ? TraditionalPalette.kCinnabarRed
+                                  : TraditionalPalette.kInkBlack,
+                              behavior: SnackBarBehavior.floating,
+                              duration: const Duration(seconds: 1),
                             ),
-                            backgroundColor: added
-                                ? TraditionalPalette.kCinnabarRed
-                                : TraditionalPalette.kInkBlack,
-                            behavior: SnackBarBehavior.floating,
-                            duration: const Duration(seconds: 1),
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(6),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 280),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 9,
+                            vertical: 6,
                           ),
-                        );
-                      },
-                      borderRadius: BorderRadius.circular(6),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 280),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isFavorited
-                              ? palette.cinnabarRed
-                              : palette.cardSurface.withValues(alpha: 0.75),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(
+                          decoration: BoxDecoration(
                             color: isFavorited
                                 ? palette.cinnabarRed
-                                : palette.borderLine,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            Icon(
-                              isFavorited
-                                  ? Icons.favorite_rounded
-                                  : Icons.favorite_border_rounded,
-                              size: 15,
+                                : palette.cardSurface.withValues(alpha: 0.75),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
                               color: isFavorited
-                                  ? palette.onCinnabar
-                                  : palette.cinnabarRed,
+                                  ? palette.cinnabarRed
+                                  : palette.borderLine,
                             ),
-                            const SizedBox(width: 4),
-                            Text(
-                              isFavorited ? '已藏' : '珍藏',
-                              style: AppTypography.label(
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              Icon(
                                 isFavorited
+                                    ? Icons.favorite_rounded
+                                    : Icons.favorite_border_rounded,
+                                size: 14.5,
+                                color: isFavorited
                                     ? palette.onCinnabar
-                                    : palette.inkText,
-                                fontSize: 12,
+                                    : palette.cinnabarRed,
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 4),
+                              Text(
+                                isFavorited ? '已藏' : '珍藏',
+                                style: AppTypography.label(
+                                  isFavorited
+                                      ? palette.onCinnabar
+                                      : palette.inkText,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
 
-                  // 复制全诗
-                  IconButton(
-                    tooltip: '复制全诗',
-                    onPressed: () => _copyFullPoem(_activePoem, palette),
-                    icon: Icon(
-                      Icons.copy_all_rounded,
-                      size: 19,
-                      color: palette.secondaryText,
+                    // 复制全诗
+                    IconButton(
+                      tooltip: '复制全诗',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => _copyFullPoem(_activePoem, palette),
+                      icon: Icon(
+                        Icons.copy_all_rounded,
+                        size: 18.5,
+                        color: palette.secondaryText,
+                      ),
                     ),
-                  ),
 
-                  // 生成诗笺海报
-                  IconButton(
-                    tooltip: '生成诗笺海报',
-                    onPressed: () {
-                      PosterPreviewDialog.show(
-                        context,
-                        poem: _activePoem,
-                        palette: palette,
-                        isVertical: isVertical,
-                      );
-                    },
-                    icon: Icon(
-                      Icons.qr_code_2_rounded,
-                      size: 20,
-                      color: palette.themeAccent,
+                    // 生成诗笺海报
+                    IconButton(
+                      tooltip: '生成诗笺海报',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () {
+                        PosterPreviewDialog.show(
+                          context,
+                          poem: _activePoem,
+                          palette: palette,
+                          isVertical: isVertical,
+                          currentUser: widget.viewModel.currentUser,
+                        );
+                      },
+                      icon: Icon(
+                        Icons.qr_code_2_rounded,
+                        size: 19.5,
+                        color: palette.themeAccent,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
