@@ -34,11 +34,9 @@ class CinnabarSeal extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final Color cinnabar = isDark
-        ? TraditionalPalette.kNaiWuQiangWei
+        ? const Color(0xFFD4534E)
         : TraditionalPalette.kCinnabarRed;
-    final Color onSealText = isDark
-        ? TraditionalPalette.kInkBlack
-        : TraditionalPalette.kXuanPaperWhite;
+    const Color onSealText = TraditionalPalette.kXuanPaperWhite;
 
     final bool isYin = style == SealStyle.yin;
     final Color bgColor =

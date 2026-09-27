@@ -44,9 +44,9 @@ $g = [System.Drawing.Graphics]::FromImage($bmp)
 $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
 $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
 
-$cinnabarBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 161, 152, 168))
-$xuanPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(235, 248, 205, 237), 6.0)
-$xuanBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 248, 205, 237))
+$cinnabarBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 184, 59, 54))
+$xuanPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(235, 252, 251, 248), 6.0)
+$xuanBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 252, 251, 248))
 
 $g.FillRectangle($cinnabarBrush, 6, 6, 180, 180)
 $g.DrawRectangle($xuanPen, 18, 18, 156, 156)

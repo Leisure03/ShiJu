@@ -1292,7 +1292,7 @@ class _JenkinsPipelineViewState extends State<JenkinsPipelineView> {
         'time': '0.012s',
       },
       <String, String>{
-        'name': '拾句 (ShiJu) 核心领域与工具测试 · 奶雾蔷薇与雾灰藕紫双生色板解析准确',
+        'name': '拾句 (ShiJu) 核心领域与工具测试 · 中国传统色色板解析与玄青夜间模式覆盖准确',
         'time': '0.003s',
       },
       <String, String>{

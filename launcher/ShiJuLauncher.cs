@@ -14,7 +14,7 @@ namespace ShiJuDesktop
     internal static class Program
     {
         private const int PreferredPort = 18689;
-        private const string BundleVersion = "1.0.6";
+        private const string BundleVersion = "1.0.7";
 
         [STAThread]
         private static void Main()

@@ -83,7 +83,7 @@ class _HomeViewState extends State<HomeView>
       SnackBar(
         content: Text(
           isNowFav
-              ? '蔷薇落印 · 已将《${poem.title}》收入藏书阁'
+              ? '朱砂落印 · 已将《${poem.title}》收入藏书阁'
               : '已从藏书阁移除《${poem.title}》',
           style: AppTypography.label(TraditionalPalette.kXuanPaperWhite),
         ),
