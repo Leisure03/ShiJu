@@ -388,5 +388,47 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('collection_tab_favorites')), findsOneWidget);
     });
+
+    testWidgets('模块五：天工流水线（Jenkins CI/CD）参数化配置、阶段拓扑切换与归档报告查看', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1180, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final ShiJuViewModel viewModel = _createTestViewModel();
+      await viewModel.initialize();
+
+      await tester.pumpWidget(ShiJuApp(viewModel: viewModel));
+      await tester.pumpAndSettle();
+
+      // 切换至顶部「流水线」Tab
+      await tester.tap(find.byKey(const Key('nav_tab_pipeline')));
+      await tester.pumpAndSettle();
+      expect(viewModel.activeTab, ShiJuNavTab.pipeline);
+      expect(find.text('Jenkins 持续集成流水线 · 拾句 (ShiJu)'), findsOneWidget);
+
+      // 验证 8 阶段节点与默认归档产物展示
+      expect(
+        find.byKey(const Key('pipeline_stage_node_web_launcher')),
+        findsOneWidget,
+      );
+      expect(find.text('dist/拾句_ShiJu.exe'), findsOneWidget);
+
+      // 切换至 JUnit 测试报告 Tab 与 Jenkinsfile Tab
+      await tester.ensureVisible(find.byKey(const Key('pipeline_tab_junit')));
+      await tester.tap(find.byKey(const Key('pipeline_tab_junit')));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('JUnit 测试套件报告 (build/reports/junit-report.xml)'),
+        findsOneWidget,
+      );
+
+      await tester.ensureVisible(
+        find.byKey(const Key('pipeline_tab_jenkinsfile')),
+      );
+      await tester.tap(find.byKey(const Key('pipeline_tab_jenkinsfile')));
+      await tester.pumpAndSettle();
+      expect(find.text('1. 本地一键执行完整 Jenkins 流水线命令：'), findsOneWidget);
+    });
   });
 }

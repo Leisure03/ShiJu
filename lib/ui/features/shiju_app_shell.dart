@@ -12,6 +12,7 @@ import 'auth/widgets/wechat_qr_code_widget.dart';
 import 'collection/views/collection_view.dart';
 import 'explore/views/explore_view.dart';
 import 'home/views/home_view.dart';
+import 'pipeline/views/jenkins_pipeline_view.dart';
 import 'shiju_view_model.dart';
 
 /// 「拾句（ShiJu）」顶层视觉与导航容器
@@ -113,6 +114,10 @@ class _ShiJuAppShellState extends State<ShiJuAppShell> {
                               key: const ValueKey<String>('nav_collection'),
                               viewModel: widget.viewModel,
                             ),
+                          ShiJuNavTab.pipeline => JenkinsPipelineView(
+                              key: const ValueKey<String>('nav_pipeline'),
+                              viewModel: widget.viewModel,
+                            ),
                         },
                       ),
                     ),
@@ -143,8 +148,8 @@ class _ShiJuAppShellState extends State<ShiJuAppShell> {
           constraints: const BoxConstraints(maxWidth: 960),
           child: LayoutBuilder(
             builder: (BuildContext context, BoxConstraints constraints) {
-              final bool isWide = constraints.maxWidth >= 700;
-              final bool isCompactMobile = constraints.maxWidth < 520;
+              final bool isWide = constraints.maxWidth >= 740;
+              final bool isCompactMobile = constraints.maxWidth < 580;
 
               final Widget brandLogo = InkWell(
                 onTap: () => widget.viewModel.setActiveTab(ShiJuNavTab.home),
@@ -188,7 +193,7 @@ class _ShiJuAppShellState extends State<ShiJuAppShell> {
                     onTap: () =>
                         widget.viewModel.setActiveTab(ShiJuNavTab.home),
                   ),
-                  SizedBox(width: isCompactMobile ? 14 : 18),
+                  SizedBox(width: isCompactMobile ? 8 : 18),
                   _buildMinimalNavTab(
                     key: const Key('nav_tab_explore'),
                     label: '寻章摘句',
@@ -197,7 +202,7 @@ class _ShiJuAppShellState extends State<ShiJuAppShell> {
                     onTap: () =>
                         widget.viewModel.setActiveTab(ShiJuNavTab.explore),
                   ),
-                  SizedBox(width: isCompactMobile ? 14 : 18),
+                  SizedBox(width: isCompactMobile ? 8 : 18),
                   _buildMinimalNavTab(
                     key: const Key('nav_tab_collection'),
                     label: favCount > 0 ? '藏书阁·$favCount' : '藏书阁',
@@ -205,6 +210,15 @@ class _ShiJuAppShellState extends State<ShiJuAppShell> {
                     palette: palette,
                     onTap: () =>
                         widget.viewModel.setActiveTab(ShiJuNavTab.collection),
+                  ),
+                  SizedBox(width: isCompactMobile ? 8 : 18),
+                  _buildMinimalNavTab(
+                    key: const Key('nav_tab_pipeline'),
+                    label: '流水线',
+                    isSelected: activeTab == ShiJuNavTab.pipeline,
+                    palette: palette,
+                    onTap: () =>
+                        widget.viewModel.setActiveTab(ShiJuNavTab.pipeline),
                   ),
                 ],
               );
@@ -323,7 +337,12 @@ class _ShiJuAppShellState extends State<ShiJuAppShell> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: <Widget>[
-                        navTabsRow,
+                        Flexible(
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: navTabsRow,
+                          ),
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Align(
@@ -349,7 +368,7 @@ class _ShiJuAppShellState extends State<ShiJuAppShell> {
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 14,
                                   ),
-                                  child: Container(
+                                                                child: Container(
                                     width: 0.8,
                                     height: 13,
                                     color: palette.borderLine,

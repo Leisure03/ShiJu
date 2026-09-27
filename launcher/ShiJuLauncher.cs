@@ -14,7 +14,7 @@ namespace ShiJuDesktop
     internal static class Program
     {
         private const int PreferredPort = 18689;
-        private const string BundleVersion = "1.0.4";
+        private const string BundleVersion = "1.0.6";
 
         [STAThread]
         private static void Main()
@@ -174,6 +174,27 @@ namespace ShiJuDesktop
             }
         }
 
+        private static string ResolveArtifactFilePath(string relativeArtifactPath, string wwwRoot)
+        {
+            string normalized = relativeArtifactPath.TrimStart('/').Replace('/', Path.DirectorySeparatorChar);
+            string exeDir = AppDomain.CurrentDomain.BaseDirectory;
+            string candidate1 = Path.GetFullPath(Path.Combine(exeDir, normalized));
+            if (candidate1.StartsWith(Path.GetFullPath(exeDir), StringComparison.OrdinalIgnoreCase) &&
+                File.Exists(candidate1))
+            {
+                return candidate1;
+            }
+
+            string candidate2 = Path.GetFullPath(Path.Combine(wwwRoot, normalized));
+            if (candidate2.StartsWith(Path.GetFullPath(wwwRoot), StringComparison.OrdinalIgnoreCase) &&
+                File.Exists(candidate2))
+            {
+                return candidate2;
+            }
+
+            return null;
+        }
+
         private static void HandleClient(TcpClient client, string wwwRoot)
         {
             using (client)
@@ -192,17 +213,66 @@ namespace ShiJuDesktop
                         string[] parts = requestLine.Split(' ');
                         if (parts.Length < 2) return;
 
-                        string rawUrl = Uri.UnescapeDataString(parts[1]);
-                        int queryIdx = rawUrl.IndexOf('?');
+                        string fullRawTarget = parts[1];
+                        string queryString = "";
+                        int queryIdx = fullRawTarget.IndexOf('?');
+                        string pathPart = fullRawTarget;
                         if (queryIdx >= 0)
                         {
-                            rawUrl = rawUrl.Substring(0, queryIdx);
+                            pathPart = fullRawTarget.Substring(0, queryIdx);
+                            queryString = fullRawTarget.Substring(queryIdx + 1);
                         }
 
+                        string rawUrl = Uri.UnescapeDataString(pathPart);
                         string relativePath = rawUrl.TrimStart('/');
                         if (string.IsNullOrEmpty(relativePath))
                         {
                             relativePath = "index.html";
+                        }
+
+                        // 1. Handle /api/reveal?path=dist/... to reveal file in Windows Explorer
+                        if (relativePath.Equals("api/reveal", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string targetRel = "";
+                            foreach (string kv in queryString.Split('&'))
+                            {
+                                if (kv.StartsWith("path=", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    targetRel = Uri.UnescapeDataString(kv.Substring(5));
+                                    break;
+                                }
+                            }
+                            string resolved = ResolveArtifactFilePath(targetRel, wwwRoot);
+                            if (!string.IsNullOrEmpty(resolved) && File.Exists(resolved))
+                            {
+                                Process.Start(new ProcessStartInfo
+                                {
+                                    FileName = "explorer.exe",
+                                    Arguments = "/select,\"" + resolved + "\"",
+                                    UseShellExecute = true
+                                });
+                                WriteResponse(stream, "200 OK", "application/json; charset=utf-8", Encoding.UTF8.GetBytes("{\"ok\":true}"), null);
+                            }
+                            else
+                            {
+                                WriteResponse(stream, "404 Not Found", "application/json; charset=utf-8", Encoding.UTF8.GetBytes("{\"ok\":false}"), null);
+                            }
+                            return;
+                        }
+
+                        // 2. Handle /dist/... artifact downloads
+                        if (relativePath.StartsWith("dist/", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string artifactFile = ResolveArtifactFilePath(relativePath, wwwRoot);
+                            if (!string.IsNullOrEmpty(artifactFile) && File.Exists(artifactFile))
+                            {
+                                byte[] artifactBody = File.ReadAllBytes(artifactFile);
+                                string artifactMime = GetMimeType(Path.GetExtension(artifactFile));
+                                WriteResponse(stream, "200 OK", artifactMime, artifactBody, Path.GetFileName(artifactFile));
+                                return;
+                            }
+                            WriteResponse(stream, "404 Not Found", "text/plain; charset=utf-8", Encoding.UTF8.GetBytes("Artifact Not Found"), null);
+                            return;
                         }
 
                         string filePath = Path.GetFullPath(
@@ -217,13 +287,13 @@ namespace ShiJuDesktop
 
                         if (!File.Exists(filePath))
                         {
-                            WriteResponse(stream, "404 Not Found", "text/plain; charset=utf-8", Encoding.UTF8.GetBytes("Not Found"));
+                            WriteResponse(stream, "404 Not Found", "text/plain; charset=utf-8", Encoding.UTF8.GetBytes("Not Found"), null);
                             return;
                         }
 
                         byte[] body = File.ReadAllBytes(filePath);
                         string contentType = GetMimeType(Path.GetExtension(filePath));
-                        WriteResponse(stream, "200 OK", contentType, body);
+                        WriteResponse(stream, "200 OK", contentType, body, null);
                     }
                 }
                 catch
@@ -232,12 +302,17 @@ namespace ShiJuDesktop
             }
         }
 
-        private static void WriteResponse(NetworkStream stream, string status, string contentType, byte[] body)
+        private static void WriteResponse(NetworkStream stream, string status, string contentType, byte[] body, string attachmentFileName)
         {
             StringBuilder sb = new StringBuilder();
             sb.Append("HTTP/1.1 ").Append(status).Append("\r\n");
             sb.Append("Content-Type: ").Append(contentType).Append("\r\n");
             sb.Append("Content-Length: ").Append(body.Length).Append("\r\n");
+            if (!string.IsNullOrEmpty(attachmentFileName))
+            {
+                string encodedName = Uri.EscapeDataString(attachmentFileName);
+                sb.Append("Content-Disposition: attachment; filename=\"").Append(encodedName).Append("\"; filename*=UTF-8''").Append(encodedName).Append("\r\n");
+            }
             sb.Append("Cache-Control: no-cache\r\n");
             sb.Append("Access-Control-Allow-Origin: *\r\n");
             sb.Append("Connection: close\r\n\r\n");
@@ -263,6 +338,12 @@ namespace ShiJuDesktop
                     return "text/css; charset=utf-8";
                 case ".json":
                     return "application/json; charset=utf-8";
+                case ".xml":
+                    return "application/xml; charset=utf-8";
+                case ".apk":
+                    return "application/vnd.android.package-archive";
+                case ".zip":
+                    return "application/zip";
                 case ".wasm":
                     return "application/wasm";
                 case ".png":

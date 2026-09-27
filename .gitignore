@@ -44,7 +44,8 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# Packaged Windows executable & temporary zip bundle
+# Packaged Windows executable, temporary zip bundle & CI dist artifacts
 /launcher/web_bundle.zip
+/dist/
 /*.exe
 

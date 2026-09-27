@@ -47,3 +47,33 @@ powershell -ExecutionPolicy Bypass -File .\launcher\build_exe.ps1
 # 5. 一键启动 iPhone 17 局域网 PWA 独立全屏服务（手机 Safari 添加到主屏幕）
 powershell -ExecutionPolicy Bypass -File .\launcher\serve_iphone.ps1 -Port 8080
 ```
+
+---
+
+## 持续集成与 Jenkins 流水线 (CI/CD)
+
+项目根目录已内置声明式流水线 [`Jenkinsfile`](Jenkinsfile) 与模块化 CI 执行引擎 [`ci/run_pipeline.ps1`](ci/run_pipeline.ps1)（同时提供 Linux/macOS 兼容脚本 [`ci/run_pipeline.sh`](ci/run_pipeline.sh)）。
+
+### 1. 流水线阶段 (Pipeline Stages)
+1. **Checkout & Env Check (`EnvCheck`)**：检出代码、提取版本与 Git 元信息、探测 Flutter SDK 与原生编译工具链（VS C++ / Android SDK）。
+2. **Install Dependencies (`Setup`)**：支持可选 `flutter clean` 并执行 `flutter pub get`。
+3. **Static Analysis (`Analyze`)**：执行 `flutter analyze --no-fatal-infos` 静态代码质量门禁。
+4. **Unit & Widget Tests (`Test`)**：执行 `flutter test --coverage`，通过 [`ci/flutter_test_to_junit.dart`](ci/flutter_test_to_junit.dart) 自动生成 Jenkins 标准 `build/reports/junit-report.xml` 测试报告与 `coverage/lcov.info` 覆盖率文件。
+5. **Build Web & Single-File EXE (`BuildWebLauncher`)**：调用 [`launcher/build_exe.ps1`](launcher/build_exe.ps1) 生成 `拾句_ShiJu.exe`、`ShiJu.exe` 单文件启动器及 `dist/shiju-web-release.zip` 静态资源包。
+6. **Build Windows Native (`BuildWindowsNative`)**：构建 `flutter build windows --release` 并打包为 `dist/shiju-windows-native-x64.zip`。
+7. **Build Android APK (`BuildAndroidApk`)**：构建 `flutter build apk --release` 并归档为 `dist/shiju-android-release.apk`。
+8. **Package & Checksums (`Archive`)**：汇总所有构建产物至 `dist/`，生成 `dist/build-manifest.json` 与 `dist/SHA256SUMS.txt`，并通过 Jenkins `archiveArtifacts` 与 `junit` 插件完成归档。
+
+### 2. 本地模拟运行流水线
+
+```powershell
+# 运行完整流水线（自动检测当前节点可用工具链并归档至 dist/）
+powershell -NoProfile -ExecutionPolicy Bypass -File .\ci\run_pipeline.ps1 -Stage All
+
+# 仅运行代码分析 + 单元测试 + Web 与 Windows 单文件 EXE 打包 + 归档校验
+powershell -NoProfile -ExecutionPolicy Bypass -File .\ci\run_pipeline.ps1 -Stage All -SkipWindowsNative -SkipAndroidApk
+
+# 单独执行某一阶段（EnvCheck | Setup | Analyze | Test | BuildWebLauncher | BuildWindowsNative | BuildAndroidApk | Archive）
+powershell -NoProfile -ExecutionPolicy Bypass -File .\ci\run_pipeline.ps1 -Stage Test
+```
+
