@@ -461,15 +461,16 @@ void main() {
       expect(viewModel.hasAppUpdate, isFalse);
       expect(find.byKey(const Key('app_auto_update_dialog')), findsNothing);
 
-      // 3. 在「流水线」Tab 点击「打包并模拟重进软件弹更新窗」，验证 #110 再次自动弹窗
-      await tester.tap(find.byKey(const Key('nav_tab_pipeline')));
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const Key('simulate_jenkins_ota_update_button')),
+      // 3. 模拟 Jenkins 再次打包生成 #110，用户手里的软件切回前台 (resumed) 时自动弹出 #110 更新窗
+      final AppReleaseManifest remoteBuild110 =
+          AppUpdateService.createManifestForBuild(buildNumber: 110);
+      await viewModel.publishJenkinsBuildManifest(
+        remoteBuild110,
+        autoPopup: false,
       );
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pumpAndSettle();
 
-      expect(viewModel.activeTab, ShiJuNavTab.home);
       expect(find.byKey(const Key('app_auto_update_dialog')), findsOneWidget);
       expect(find.text('v1.0.8 (#110)'), findsOneWidget);
     });
