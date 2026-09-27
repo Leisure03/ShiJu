@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../../../data/services/app_update_service.dart';
+import '../../../../domain/models/app_update_model.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/theme/traditional_palette.dart';
 import '../../../core/widgets/cinnabar_seal.dart';
@@ -103,6 +105,10 @@ class _JenkinsPipelineViewState extends State<JenkinsPipelineView> {
   @override
   void initState() {
     super.initState();
+    final int currentInstalled = widget.viewModel.currentBuildNumber;
+    final int latestKnown =
+        widget.viewModel.latestManifest?.buildNumber ?? currentInstalled;
+    _buildNumber = latestKnown > 108 ? latestKnown : 108;
     _stages = _buildInitialStages();
   }
 
@@ -250,7 +256,7 @@ class _JenkinsPipelineViewState extends State<JenkinsPipelineView> {
     ];
   }
 
-  /// 点击「触发流水线构建」模拟完整 8 阶段动态流水线执行过程
+  /// 点击「触发流水线构建」模拟完整 8 阶段动态流水线执行过程，并在归档完成后自动推送新版本更新提示
   void _triggerPipelineRun() {
     if (_isRunningPipeline) return;
     _pipelineTimer?.cancel();
@@ -314,9 +320,46 @@ class _JenkinsPipelineViewState extends State<JenkinsPipelineView> {
           _isRunningPipeline = false;
           _selectedStageIndex = _stages.length - 1;
           timer.cancel();
+
+          // Stage 8 归档完成：生成新的 dist/build-manifest.json 并触发客户端新版本自动弹窗
+          final AppReleaseManifest manifest =
+              AppUpdateService.createManifestForBuild(
+            buildNumber: _buildNumber,
+          );
+          unawaited(
+            widget.viewModel.publishJenkinsBuildManifest(
+              manifest,
+              autoPopup: true,
+            ),
+          );
         }
       });
     });
+  }
+
+  /// 一键模拟「Jenkins 打包完成 -> 用户再次进入软件首页 -> 自动弹出更新提示」完整闭环
+  Future<void> _simulatePackAndReenterApp() async {
+    _pipelineTimer?.cancel();
+    final int nextBuild = (_buildNumber > widget.viewModel.currentBuildNumber
+            ? _buildNumber
+            : widget.viewModel.currentBuildNumber) +
+        1;
+    setState(() {
+      _isRunningPipeline = false;
+      _buildNumber = nextBuild;
+      _stages = _buildInitialStages();
+      _selectedStageIndex = _stages.length - 1;
+    });
+
+    final AppReleaseManifest manifest = AppUpdateService.createManifestForBuild(
+      buildNumber: nextBuild,
+    );
+    await widget.viewModel.publishJenkinsBuildManifest(
+      manifest,
+      autoPopup: true,
+    );
+    // 切换回「拾句」首页，还原用户重新打开进入软件自动弹出更新提示的场景
+    widget.viewModel.setActiveTab(ShiJuNavTab.home);
   }
 
   void _copyText(String text, String toastLabel) {
@@ -515,7 +558,7 @@ class _JenkinsPipelineViewState extends State<JenkinsPipelineView> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Declarative Pipeline (Jenkinsfile) · Windows 主节点 + 跨平台自适应构建与归档',
+                          'Declarative Pipeline (Jenkinsfile) · 打包归档后客户端自动检测并弹窗热更新',
                           style: AppTypography.attribution(
                             palette.secondaryText,
                             fontSize: 13,
@@ -527,46 +570,91 @@ class _JenkinsPipelineViewState extends State<JenkinsPipelineView> {
                 ],
               ),
 
-              // 触发构建按钮
-              InkWell(
-                key: const Key('trigger_jenkins_build_button'),
-                onTap: _isRunningPipeline ? null : _triggerPipelineRun,
-                borderRadius: BorderRadius.circular(6),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _isRunningPipeline
-                        ? palette.themeAccent.withValues(alpha: 0.5)
-                        : palette.cinnabarRed,
+              // 触发构建与模拟客户端热更新弹窗按钮组
+              Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: <Widget>[
+                  InkWell(
+                    key: const Key('simulate_jenkins_ota_update_button'),
+                    onTap: _simulatePackAndReenterApp,
                     borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      Icon(
-                        _isRunningPipeline
-                            ? Icons.sync_rounded
-                            : Icons.play_arrow_rounded,
-                        size: 17,
-                        color: palette.onCinnabar,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 9.5,
                       ),
-                      const SizedBox(width: 6),
-                      Text(
-                        _isRunningPipeline
-                            ? '流水线构建中 (#$_buildNumber)...'
-                            : '立即构建 (Build Now)',
-                        style: AppTypography.label(
-                          palette.onCinnabar,
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w600,
+                      decoration: BoxDecoration(
+                        color: palette.cinnabarRed.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: palette.cinnabarRed,
+                          width: 1.0,
                         ),
                       ),
-                    ],
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Icon(
+                            Icons.system_update_alt_rounded,
+                            size: 16,
+                            color: palette.cinnabarRed,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '打包并模拟重进软件弹更新窗',
+                            style: AppTypography.label(
+                              palette.cinnabarRed,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
+                  InkWell(
+                    key: const Key('trigger_jenkins_build_button'),
+                    onTap: _isRunningPipeline ? null : _triggerPipelineRun,
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _isRunningPipeline
+                            ? palette.themeAccent.withValues(alpha: 0.5)
+                            : palette.cinnabarRed,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Icon(
+                            _isRunningPipeline
+                                ? Icons.sync_rounded
+                                : Icons.play_arrow_rounded,
+                            size: 17,
+                            color: palette.onCinnabar,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _isRunningPipeline
+                                ? '流水线构建中 (#$_buildNumber)...'
+                                : '立即构建 (Build Now)',
+                            style: AppTypography.label(
+                              palette.onCinnabar,
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -591,21 +679,21 @@ class _JenkinsPipelineViewState extends State<JenkinsPipelineView> {
               ),
               _buildMetaBadge(
                 palette: palette,
-                icon: Icons.commit_rounded,
-                label: 'Git 分支与提交',
-                value: 'extend_jenkins_pipeline (35f7adb)',
+                icon: Icons.devices_other_rounded,
+                label: '客户端已装版本',
+                value: widget.viewModel.currentDisplayVersion,
               ),
               _buildMetaBadge(
                 palette: palette,
-                icon: Icons.dns_outlined,
-                label: '执行节点 (Agent)',
-                value: 'Windows-x64 (Flutter 3.44.9 / Dart 3.12.2)',
+                icon: Icons.commit_rounded,
+                label: 'Git 分支与提交',
+                value: 'jenkins_auto_update (82c6df6)',
               ),
               _buildMetaBadge(
                 palette: palette,
                 icon: Icons.inventory_2_outlined,
-                label: '归档路径',
-                value: 'dist/**/* & build/reports/junit-report.xml',
+                label: '自动更新清单',
+                value: 'dist/build-manifest.json',
               ),
             ],
           ),

@@ -14,6 +14,7 @@ import 'explore/views/explore_view.dart';
 import 'home/views/home_view.dart';
 import 'pipeline/views/jenkins_pipeline_view.dart';
 import 'shiju_view_model.dart';
+import 'update/views/app_update_dialog.dart';
 
 /// 「拾句（ShiJu）」顶层视觉与导航容器
 class ShiJuAppShell extends StatefulWidget {
@@ -28,13 +29,51 @@ class ShiJuAppShell extends StatefulWidget {
   State<ShiJuAppShell> createState() => _ShiJuAppShellState();
 }
 
-class _ShiJuAppShellState extends State<ShiJuAppShell> {
+class _ShiJuAppShellState extends State<ShiJuAppShell>
+    with WidgetsBindingObserver {
   final FocusNode _keyboardFocusNode = FocusNode();
+  bool _isUpdateDialogShowing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _keyboardFocusNode.dispose();
     super.dispose();
+  }
+
+  /// 当用户手里的软件再次从后台切回前台（resumed）时，自动请求 Jenkins 最新构建清单检查更新
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      widget.viewModel.checkForAppUpdate();
+    }
+  }
+
+  void _scheduleAutoUpdatePopupIfNeeded() {
+    if (!widget.viewModel.shouldShowUpdateDialog || _isUpdateDialogShowing) {
+      return;
+    }
+    _isUpdateDialogShowing = true;
+    widget.viewModel.acknowledgeUpdateDialogShown();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        _isUpdateDialogShowing = false;
+        return;
+      }
+      AppUpdateDialog.show(
+        context,
+        viewModel: widget.viewModel,
+      ).whenComplete(() {
+        _isUpdateDialogShowing = false;
+      });
+    });
   }
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
@@ -69,6 +108,8 @@ class _ShiJuAppShellState extends State<ShiJuAppShell> {
     return ListenableBuilder(
       listenable: widget.viewModel,
       builder: (BuildContext context, _) {
+        _scheduleAutoUpdatePopupIfNeeded();
+
         final TraditionalPalette palette = widget.viewModel.activePalette;
         final ShiJuNavTab activeTab = widget.viewModel.activeTab;
 
@@ -140,6 +181,7 @@ class _ShiJuAppShellState extends State<ShiJuAppShell> {
     final bool isVertical = widget.viewModel.isVerticalLayout;
     final bool isDark = widget.viewModel.isDarkMode;
     final int favCount = widget.viewModel.favoriteIds.length;
+    final bool hasUpdate = widget.viewModel.hasAppUpdate;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
@@ -151,34 +193,70 @@ class _ShiJuAppShellState extends State<ShiJuAppShell> {
               final bool isWide = constraints.maxWidth >= 740;
               final bool isCompactMobile = constraints.maxWidth < 580;
 
-              final Widget brandLogo = InkWell(
-                onTap: () => widget.viewModel.setActiveTab(ShiJuNavTab.home),
-                borderRadius: BorderRadius.circular(4),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      const CinnabarSeal(
-                        text: '拾句',
-                        style: SealStyle.yin,
-                        fontSize: 11.5,
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 5.5,
-                          vertical: 2,
+              final Widget brandLogo = Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  InkWell(
+                    onTap: () =>
+                        widget.viewModel.setActiveTab(ShiJuNavTab.home),
+                    borderRadius: BorderRadius.circular(4),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          const CinnabarSeal(
+                            text: '拾句',
+                            style: SealStyle.yin,
+                            fontSize: 11.5,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 5.5,
+                              vertical: 2,
+                            ),
+                          ),
+                          const SizedBox(width: 9),
+                          Text(
+                            'ShiJu',
+                            style: AppTypography.attribution(
+                              palette.mutedText,
+                              fontSize: 12.5,
+                            ).copyWith(letterSpacing: 1.8),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (hasUpdate) ...<Widget>[
+                    const SizedBox(width: 6),
+                    Tooltip(
+                      message:
+                          '检测到 Jenkins 新版本 ${widget.viewModel.latestManifest?.displayVersion ?? ''}，点击立即更新',
+                      child: InkWell(
+                        key: const Key('header_update_badge_button'),
+                        onTap: widget.viewModel.openUpdateDialog,
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: palette.cinnabarRed,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            '新版本 #${widget.viewModel.latestManifest?.buildNumber}',
+                            style: AppTypography.label(
+                              palette.onCinnabar,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 9),
-                      Text(
-                        'ShiJu',
-                        style: AppTypography.attribution(
-                          palette.mutedText,
-                          fontSize: 12.5,
-                        ).copyWith(letterSpacing: 1.8),
-                      ),
-                    ],
-                  ),
-                ),
+                    ),
+                  ],
+                ],
               );
 
               final Widget navTabsRow = Row(

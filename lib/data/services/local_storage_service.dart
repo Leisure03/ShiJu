@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../../domain/models/app_update_model.dart';
 import '../../domain/models/auth_user_model.dart';
 import 'storage_driver_stub.dart';
 import 'storage_driver_stub.dart'
@@ -17,6 +18,11 @@ class LocalStorageService {
   static const String kVerticalLayoutKey = 'shiju_is_vertical_layout';
   static const String kDarkModeKey = 'shiju_is_dark_mode';
   static const String kAuthUserKey = 'shiju_wechat_auth_user';
+  static const String kInstalledVersionKey = 'shiju_installed_version';
+  static const String kInstalledBuildNumberKey = 'shiju_installed_build_number';
+  static const String kIgnoredBuildNumberKey = 'shiju_ignored_build_number';
+  static const String kPublishedManifestKey =
+      'shiju_published_jenkins_manifest';
 
   /// 获取收藏诗词 ID 列表
   Future<List<String>> getFavoriteIds() async {
@@ -104,6 +110,68 @@ class LocalStorageService {
       await _driver.setItem(kAuthUserKey, '');
     } else {
       await _driver.setItem(kAuthUserKey, jsonEncode(user.toJson()));
+    }
+  }
+
+  /// 获取客户端当前已安装版本号
+  Future<String?> getInstalledVersion() async {
+    final String? raw = await _driver.getItem(kInstalledVersionKey);
+    if (raw == null || raw.trim().isEmpty) return null;
+    return raw.trim();
+  }
+
+  /// 保存客户端当前已安装版本号
+  Future<void> saveInstalledVersion(String version) async {
+    await _driver.setItem(kInstalledVersionKey, version.trim());
+  }
+
+  /// 获取客户端当前已安装构建号 (Build Number)
+  Future<int?> getInstalledBuildNumber() async {
+    final String? raw = await _driver.getItem(kInstalledBuildNumberKey);
+    if (raw == null || raw.trim().isEmpty) return null;
+    return int.tryParse(raw.trim());
+  }
+
+  /// 保存客户端当前已安装构建号
+  Future<void> saveInstalledBuildNumber(int buildNumber) async {
+    await _driver.setItem(kInstalledBuildNumberKey, buildNumber.toString());
+  }
+
+  /// 获取用户选择「稍后提醒」暂时跳过的构建号
+  Future<int?> getIgnoredBuildNumber() async {
+    final String? raw = await _driver.getItem(kIgnoredBuildNumberKey);
+    if (raw == null || raw.trim().isEmpty) return null;
+    return int.tryParse(raw.trim());
+  }
+
+  /// 保存用户暂时跳过的构建号
+  Future<void> saveIgnoredBuildNumber(int? buildNumber) async {
+    if (buildNumber == null) {
+      await _driver.setItem(kIgnoredBuildNumberKey, '');
+    } else {
+      await _driver.setItem(kIgnoredBuildNumberKey, buildNumber.toString());
+    }
+  }
+
+  /// 获取 Jenkins 流水线最新发布到共享存储的构建清单快照
+  Future<AppReleaseManifest?> getPublishedManifest() async {
+    final String? raw = await _driver.getItem(kPublishedManifestKey);
+    if (raw == null || raw.trim().isEmpty) return null;
+    try {
+      final Object? decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        return AppReleaseManifest.fromJson(decoded);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// 保存 Jenkins 流水线最新发布的构建清单快照
+  Future<void> savePublishedManifest(AppReleaseManifest? manifest) async {
+    if (manifest == null) {
+      await _driver.setItem(kPublishedManifestKey, '');
+    } else {
+      await _driver.setItem(kPublishedManifestKey, jsonEncode(manifest.toJson()));
     }
   }
 }

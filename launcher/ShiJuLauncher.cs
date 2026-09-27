@@ -260,7 +260,47 @@ namespace ShiJuDesktop
                             return;
                         }
 
-                        // 2. Handle /dist/... artifact downloads
+                        // 2. Handle /api/apply-update for OTA hot-updating web assets from dist/shiju-web-release.zip
+                        if (relativePath.Equals("api/apply-update", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string zipCandidate = ResolveArtifactFilePath("dist/shiju-web-release.zip", wwwRoot);
+                            if (!string.IsNullOrEmpty(zipCandidate) && File.Exists(zipCandidate))
+                            {
+                                try
+                                {
+                                    using (FileStream fs = File.OpenRead(zipCandidate))
+                                    using (ZipArchive archive = new ZipArchive(fs, ZipArchiveMode.Read))
+                                    {
+                                        foreach (ZipArchiveEntry entry in archive.Entries)
+                                        {
+                                            string fullOutPath = Path.Combine(wwwRoot, entry.FullName.Replace('/', Path.DirectorySeparatorChar));
+                                            if (string.IsNullOrEmpty(entry.Name))
+                                            {
+                                                Directory.CreateDirectory(fullOutPath);
+                                                continue;
+                                            }
+                                            string parent = Path.GetDirectoryName(fullOutPath);
+                                            if (!string.IsNullOrEmpty(parent))
+                                            {
+                                                Directory.CreateDirectory(parent);
+                                            }
+                                            using (Stream entryStream = entry.Open())
+                                            using (FileStream outStream = File.Create(fullOutPath))
+                                            {
+                                                entryStream.CopyTo(outStream);
+                                            }
+                                        }
+                                    }
+                                }
+                                catch
+                                {
+                                }
+                            }
+                            WriteResponse(stream, "200 OK", "application/json; charset=utf-8", Encoding.UTF8.GetBytes("{\"ok\":true}"), null);
+                            return;
+                        }
+
+                        // 3. Handle /dist/... artifact downloads & build-manifest.json
                         if (relativePath.StartsWith("dist/", StringComparison.OrdinalIgnoreCase))
                         {
                             string artifactFile = ResolveArtifactFilePath(relativePath, wwwRoot);
@@ -268,7 +308,10 @@ namespace ShiJuDesktop
                             {
                                 byte[] artifactBody = File.ReadAllBytes(artifactFile);
                                 string artifactMime = GetMimeType(Path.GetExtension(artifactFile));
-                                WriteResponse(stream, "200 OK", artifactMime, artifactBody, Path.GetFileName(artifactFile));
+                                string attachName = artifactFile.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
+                                    ? null
+                                    : Path.GetFileName(artifactFile);
+                                WriteResponse(stream, "200 OK", artifactMime, artifactBody, attachName);
                                 return;
                             }
                             WriteResponse(stream, "404 Not Found", "text/plain; charset=utf-8", Encoding.UTF8.GetBytes("Artifact Not Found"), null);

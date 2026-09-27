@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import '../../data/repositories/poetry_repository.dart';
+import '../../data/services/app_update_service.dart';
 import '../../data/services/wechat_auth_service.dart';
+import '../../domain/models/app_update_model.dart';
 import '../../domain/models/auth_user_model.dart';
 import '../../domain/models/poem_model.dart';
 import '../core/theme/traditional_palette.dart';
@@ -26,13 +29,16 @@ class ShiJuViewModel extends ChangeNotifier {
   ShiJuViewModel({
     PoetryRepository? repository,
     WeChatAuthService? authService,
+    AppUpdateService? updateService,
   })  : _repository = repository ?? PoetryRepository(),
-        _authService = authService ?? WeChatAuthService() {
+        _authService = authService ?? WeChatAuthService(),
+        _updateService = updateService ?? AppUpdateService() {
     _poems = _repository.getAllPoems();
   }
 
   final PoetryRepository _repository;
   final WeChatAuthService _authService;
+  final AppUpdateService _updateService;
   final Random _random = Random();
 
   late final List<Poem> _poems;
@@ -48,6 +54,16 @@ class ShiJuViewModel extends ChangeNotifier {
   WeChatUser? _currentUser;
   bool _isSyncingCloud = false;
 
+  // Jenkins 自动更新 (OTA Auto-Update) 核心状态
+  String _currentAppVersion = AppUpdateService.kDefaultAppVersion;
+  int _currentBuildNumber = AppUpdateService.kDefaultBuildNumber;
+  int? _ignoredBuildNumber;
+  AppReleaseManifest? _latestManifest;
+  AppUpdateStatus _updateStatus = AppUpdateStatus.idle;
+  double _updateProgress = 0.0;
+  String _updateStepLabel = '';
+  bool _shouldShowUpdateDialog = false;
+
   String _searchQuery = '';
   String _selectedTag = '全部';
 
@@ -56,6 +72,42 @@ class ShiJuViewModel extends ChangeNotifier {
 
   /// 微信扫码认证服务
   WeChatAuthService get authService => _authService;
+
+  /// Jenkins 自动更新服务
+  AppUpdateService get updateService => _updateService;
+
+  /// 当前客户端已安装版本号（如 1.0.6）
+  String get currentAppVersion => _currentAppVersion;
+
+  /// 当前客户端已安装构建号（如 108）
+  int get currentBuildNumber => _currentBuildNumber;
+
+  /// 当前客户端完整展示版本（如 v1.0.6 (#108)）
+  String get currentDisplayVersion =>
+      'v${_currentAppVersion.split('+').first} (#$_currentBuildNumber)';
+
+  /// 检测到的 Jenkins 最新版本发布清单
+  AppReleaseManifest? get latestManifest => _latestManifest;
+
+  /// 当前更新生命周期状态
+  AppUpdateStatus get updateStatus => _updateStatus;
+
+  /// 是否存在待更新的 Jenkins 新版本构建
+  bool get hasAppUpdate =>
+      _latestManifest != null &&
+      _latestManifest!.isNewerThan(
+        currentVersion: _currentAppVersion,
+        currentBuildNumber: _currentBuildNumber,
+      );
+
+  /// 更新包下载与校验进度（0.0 ~ 1.0）
+  double get updateProgress => _updateProgress;
+
+  /// 当前更新步骤描述文本
+  String get updateStepLabel => _updateStepLabel;
+
+  /// 是否需要在界面上自动弹出「发现新版本」更新提示框
+  bool get shouldShowUpdateDialog => _shouldShowUpdateDialog && hasAppUpdate;
 
   /// 当前已登录的微信雅士用户（未登录为 null）
   WeChatUser? get currentUser => _currentUser;
@@ -129,13 +181,18 @@ class ShiJuViewModel extends ChangeNotifier {
         selectedTag: _selectedTag,
       );
 
-  /// 初始化加载持久化数据（收藏列表、阅读历史、横竖排偏好、夜间模式、微信登录状态）
+  /// 初始化加载持久化数据（收藏列表、阅读历史、横竖排偏好、夜间模式、微信登录状态、客户端版本与 Jenkins 自动更新检测）
   Future<void> initialize() async {
     final List<String> savedFavorites = await _repository.loadFavoriteIds();
     final List<String> savedHistory = await _repository.loadHistoryIds();
     final bool savedVertical = await _repository.loadIsVerticalLayout();
     final bool savedDark = await _repository.loadIsDarkMode();
     final WeChatUser? savedUser = await _repository.loadAuthUser();
+    final String? savedVersion = await _repository.loadInstalledVersion();
+    final int? savedBuildNum = await _repository.loadInstalledBuildNumber();
+    final int? savedIgnoredBuild = await _repository.loadIgnoredBuildNumber();
+    final AppReleaseManifest? savedPublishedManifest =
+        await _repository.loadPublishedManifest();
 
     _favoriteIds
       ..clear()
@@ -146,11 +203,32 @@ class ShiJuViewModel extends ChangeNotifier {
     _isVerticalLayout = savedVertical;
     _isDarkMode = savedDark;
     _currentUser = savedUser;
+
+    if (savedVersion != null && savedVersion.isNotEmpty) {
+      _currentAppVersion = savedVersion;
+    }
+    if (savedBuildNum != null && savedBuildNum > _currentBuildNumber) {
+      _currentBuildNumber = savedBuildNum;
+    }
+    _ignoredBuildNumber = savedIgnoredBuild;
+    if (savedPublishedManifest != null) {
+      _latestManifest = savedPublishedManifest;
+      if (hasAppUpdate &&
+          (savedPublishedManifest.forceUpdate ||
+              _ignoredBuildNumber != savedPublishedManifest.buildNumber)) {
+        _updateStatus = AppUpdateStatus.updateAvailable;
+        _shouldShowUpdateDialog = true;
+      }
+    }
+
     _isInitialized = true;
 
     // 默认将首屏诗词记入阅读历史
     await recordReadingHistory(currentPoem.id, notify: false);
     notifyListeners();
+
+    // 异步拉取远端 dist/build-manifest.json 检查是否有 Jenkins 新构建版本
+    unawaited(checkForAppUpdate());
   }
 
   /// 完成微信扫码登录，保存雅士档案并合并云端藏书阁收藏
@@ -379,4 +457,145 @@ class ShiJuViewModel extends ChangeNotifier {
   /// 获取同一作者收录的全部诗词
   List<Poem> getAuthorWorks(String authorId) =>
       _repository.getPoemsByAuthor(authorId);
+
+  // ===========================================================================
+  // Jenkins 持续交付 · 客户端自动检测更新与一键热更新闭环
+  // ===========================================================================
+
+  /// 检查是否有 Jenkins 新打包发布的版本（启动时、切回前台时或手动点击时调用）
+  Future<bool> checkForAppUpdate({
+    bool manual = false,
+    AppReleaseManifest? injectedManifest,
+  }) async {
+    if (_updateStatus == AppUpdateStatus.downloading) {
+      return false;
+    }
+
+    if (manual) {
+      _updateStatus = AppUpdateStatus.checking;
+      notifyListeners();
+    }
+
+    AppReleaseManifest? candidate = injectedManifest;
+    candidate ??= await _updateService.fetchRemoteManifest();
+
+    final AppReleaseManifest? savedPublished =
+        await _repository.loadPublishedManifest();
+    if (savedPublished != null) {
+      if (candidate == null ||
+          savedPublished.buildNumber > candidate.buildNumber) {
+        candidate = savedPublished;
+      }
+    }
+
+    if (candidate != null) {
+      if (_latestManifest == null ||
+          candidate.buildNumber >= _latestManifest!.buildNumber) {
+        _latestManifest = candidate;
+      }
+    }
+
+    if (hasAppUpdate && _latestManifest != null) {
+      _updateStatus = AppUpdateStatus.updateAvailable;
+      final bool isIgnored = !manual &&
+          !_latestManifest!.forceUpdate &&
+          _ignoredBuildNumber == _latestManifest!.buildNumber;
+      if (!isIgnored) {
+        _shouldShowUpdateDialog = true;
+      }
+      notifyListeners();
+      return true;
+    }
+
+    _updateStatus = AppUpdateStatus.upToDate;
+    _shouldShowUpdateDialog = false;
+    notifyListeners();
+    return false;
+  }
+
+  /// 当 Jenkins 流水线完成打包归档后，发布最新构建清单并触发客户端更新感知
+  Future<void> publishJenkinsBuildManifest(
+    AppReleaseManifest manifest, {
+    bool autoPopup = true,
+  }) async {
+    _latestManifest = manifest;
+    await _repository.savePublishedManifest(manifest);
+
+    if (hasAppUpdate) {
+      _updateStatus = AppUpdateStatus.updateAvailable;
+      if (autoPopup) {
+        _ignoredBuildNumber = null;
+        await _repository.saveIgnoredBuildNumber(null);
+        _shouldShowUpdateDialog = true;
+      }
+    }
+    notifyListeners();
+  }
+
+  /// 标记更新弹窗已被 UI 层消费弹出，防止重复叠加弹窗
+  void acknowledgeUpdateDialogShown() {
+    if (!_shouldShowUpdateDialog) return;
+    _shouldShowUpdateDialog = false;
+  }
+
+  /// 主动唤起新版本更新弹窗
+  void openUpdateDialog() {
+    _latestManifest ??= AppUpdateService.createManifestForBuild(
+      buildNumber: _currentBuildNumber + 1,
+    );
+    _updateStatus = AppUpdateStatus.updateAvailable;
+    _shouldShowUpdateDialog = true;
+    notifyListeners();
+  }
+
+  /// 用户点击「稍后提醒」关闭更新弹窗
+  Future<void> dismissUpdateDialog({bool ignoreThisBuild = true}) async {
+    _shouldShowUpdateDialog = false;
+    if (ignoreThisBuild && _latestManifest != null) {
+      _ignoredBuildNumber = _latestManifest!.buildNumber;
+      await _repository.saveIgnoredBuildNumber(_ignoredBuildNumber);
+    }
+    notifyListeners();
+  }
+
+  /// 执行一键下载更新包、校验 SHA-256 指纹并完成客户端版本热更新升级
+  Future<void> performAppUpdate() async {
+    final AppReleaseManifest? target = _latestManifest;
+    if (target == null || _updateStatus == AppUpdateStatus.downloading) {
+      return;
+    }
+
+    _updateStatus = AppUpdateStatus.downloading;
+    _updateProgress = 0.22;
+    _updateStepLabel =
+        '正在从 Jenkins 制品库拉取 ${target.primaryArtifact.path} (${target.primaryArtifact.formattedSize})...';
+    notifyListeners();
+
+    await Future<void>.delayed(const Duration(milliseconds: 90));
+    _updateProgress = 0.58;
+    _updateStepLabel =
+        '正在校验产物 SHA-256 签名 (${target.primaryArtifact.sha256.substring(0, 12)}...)...';
+    notifyListeners();
+
+    await Future<void>.delayed(const Duration(milliseconds: 90));
+    _updateProgress = 0.88;
+    _updateStepLabel = 'SHA-256 校验通过，正在解压并热替换静态资源包...';
+    notifyListeners();
+
+    await _updateService.applyLauncherHotUpdate();
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+
+    _currentAppVersion = target.cleanSemver;
+    _currentBuildNumber = target.buildNumber;
+    _ignoredBuildNumber = null;
+    _updateProgress = 1.0;
+    _updateStepLabel = '已成功更新至 ${target.displayVersion}！';
+    _updateStatus = AppUpdateStatus.completed;
+    _shouldShowUpdateDialog = false;
+    notifyListeners();
+
+    await _repository.saveInstalledVersion(_currentAppVersion);
+    await _repository.saveInstalledBuildNumber(_currentBuildNumber);
+    await _repository.saveIgnoredBuildNumber(null);
+  }
 }

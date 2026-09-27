@@ -366,10 +366,46 @@ function Invoke-Archive {
         New-Item -ItemType Directory -Path $distPath -Force | Out-Null
     }
 
-    $version = Get-AppVersion
     $commit = Get-GitCommitShort
     $branch = Get-GitBranchName
     $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    $manifestFile = Join-Path $distPath "build-manifest.json"
+
+    # Resolve integer buildNumber so client OTA update check can compare reliably
+    $resolvedBuildNum = 109
+    $parsedEnvBuild = 0
+    if ([int]::TryParse($BuildNumber, [ref]$parsedEnvBuild) -and $parsedEnvBuild -gt 0) {
+        $resolvedBuildNum = $parsedEnvBuild
+    } elseif (Test-Path $manifestFile) {
+        try {
+            $prevJson = Get-Content $manifestFile -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($null -ne $prevJson.buildNumber) {
+                $prevNum = 0
+                if ([int]::TryParse("$($prevJson.buildNumber)", [ref]$prevNum) -and $prevNum -ge 108) {
+                    $resolvedBuildNum = $prevNum + 1
+                }
+            }
+        } catch {}
+    }
+
+    $patchVer = 6 + [Math]::Max(1, ($resolvedBuildNum - 108))
+    $version = "1.0.$patchVer+$resolvedBuildNum"
+
+    # Collect recent git commit messages as releaseNotes
+    $releaseNotes = New-Object System.Collections.Generic.List[string]
+    try {
+        $gitLogs = (& git -C $projRoot log -n 3 --pretty=format:"%s (%h)" 2>$null)
+        if ($LASTEXITCODE -eq 0 -and $gitLogs) {
+            foreach ($line in ($gitLogs -split "`r?`n")) {
+                if (-not [string]::IsNullOrWhiteSpace($line)) {
+                    $releaseNotes.Add($line.Trim())
+                }
+            }
+        }
+    } catch {}
+    if ($releaseNotes.Count -eq 0) {
+        $releaseNotes.Add("Jenkins CI/CD automated release build #$resolvedBuildNum ($branch@$commit)")
+    }
 
     $files = Get-ChildItem -Path $distPath -File -Recurse | Where-Object {
         $_.Name -notin @("SHA256SUMS.txt", "build-manifest.json")
@@ -383,7 +419,7 @@ function Invoke-Archive {
         $relPath = $file.FullName.Substring($distPath.Length).TrimStart('\', '/').Replace('\', '/')
         $checksumLines.Add("$($hashObj.Hash.ToLowerInvariant())  $relPath")
         $artifactEntries.Add([ordered]@{
-            path      = $relPath
+            path      = "dist/$relPath"
             sizeBytes = $file.Length
             sha256    = $hashObj.Hash.ToLowerInvariant()
         })
@@ -393,16 +429,17 @@ function Invoke-Archive {
     [System.IO.File]::WriteAllLines($checksumFile, $checksumLines, (New-Object System.Text.UTF8Encoding($false)))
 
     $manifest = [ordered]@{
-        appName     = "$cnAppName (ShiJu)"
-        version     = $version
-        buildNumber = $BuildNumber
-        gitBranch   = $branch
-        gitCommit   = $commit
-        builtAtUtc  = $timestamp
-        artifacts   = $artifactEntries
+        appName      = "$cnAppName (ShiJu)"
+        version      = $version
+        buildNumber  = $resolvedBuildNum
+        gitBranch    = $branch
+        gitCommit    = $commit
+        builtAtUtc   = $timestamp
+        forceUpdate  = $false
+        releaseNotes = $releaseNotes
+        artifacts    = $artifactEntries
     }
 
-    $manifestFile = Join-Path $distPath "build-manifest.json"
     $manifestJson = $manifest | ConvertTo-Json -Depth 5
     [System.IO.File]::WriteAllText($manifestFile, $manifestJson, (New-Object System.Text.UTF8Encoding($false)))
 
