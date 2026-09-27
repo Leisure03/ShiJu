@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../../../data/services/classical_knowledge_service.dart';
 import '../../../../domain/models/poem_model.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/theme/traditional_palette.dart';
@@ -86,7 +87,9 @@ class _PoemDetailViewState extends State<PoemDetailView> {
   @override
   void initState() {
     super.initState();
-    _activePoem = widget.initialPoem;
+    _activePoem = ClassicalKnowledgeService.upgradePoemIfNeeded(
+      widget.initialPoem,
+    );
   }
 
   @override
@@ -98,9 +101,9 @@ class _PoemDetailViewState extends State<PoemDetailView> {
   void _switchPoemInDetail(Poem newPoem) {
     if (_activePoem.id == newPoem.id) return;
     setState(() {
-      _activePoem = newPoem;
+      _activePoem = ClassicalKnowledgeService.upgradePoemIfNeeded(newPoem);
     });
-    widget.viewModel.selectPoem(newPoem);
+    widget.viewModel.selectPoem(_activePoem);
     if (_scrollController.hasClients) {
       _scrollController.animateTo(
         0,
@@ -137,13 +140,18 @@ class _PoemDetailViewState extends State<PoemDetailView> {
     return ListenableBuilder(
       listenable: widget.viewModel,
       builder: (BuildContext context, _) {
+        final Poem latestPoem = widget.viewModel.getPoemById(_activePoem.id) ??
+            ClassicalKnowledgeService.upgradePoemIfNeeded(_activePoem);
+        _activePoem = latestPoem;
         final TraditionalPalette palette =
             widget.viewModel.paletteForPoem(_activePoem);
         final bool isFavorited = widget.viewModel.isFavorite(_activePoem.id);
         final bool isVertical = widget.viewModel.isVerticalLayout;
         final Author? author = widget.viewModel.getAuthorForPoem(_activePoem);
-        final List<Poem> authorWorks =
-            widget.viewModel.getAuthorWorks(_activePoem.authorId);
+        final List<Poem> authorWorks = widget.viewModel.getAuthorWorks(
+          _activePoem.authorId,
+          authorName: _activePoem.authorName,
+        );
 
         return TweenAnimationBuilder<Color?>(
           tween: ColorTween(end: palette.background),
@@ -887,10 +895,60 @@ class _PoemDetailViewState extends State<PoemDetailView> {
       key: ValueKey<String>('tab_bg_${poem.id}'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        _buildSectionTitle(
-          title: '创作背景与生平境遇',
-          sealText: '境',
-          palette: palette,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: <Widget>[
+            Expanded(
+              child: _buildSectionTitle(
+                title: '创作背景与生平境遇',
+                sealText: '境',
+                palette: palette,
+              ),
+            ),
+            if (poem.isRemote)
+              InkWell(
+                key: const Key('detail_ai_enrich_button'),
+                onTap: widget.viewModel.isEnrichingPoem
+                    ? null
+                    : () => _showAiEnrichmentDialog(context, palette, poem),
+                borderRadius: BorderRadius.circular(5),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: palette.themeAccent.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(5),
+                    border: Border.all(
+                      color: palette.themeAccent.withValues(alpha: 0.28),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Icon(
+                        widget.viewModel.isEnrichingPoem
+                            ? Icons.hourglass_top_rounded
+                            : Icons.auto_awesome_rounded,
+                        size: 13,
+                        color: palette.themeAccent,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        widget.viewModel.isEnrichingPoem
+                            ? '正在考据...'
+                            : '百科 / AI 深度考据',
+                        style: AppTypography.label(
+                          palette.themeAccent,
+                          fontSize: 11.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
         ),
         const SizedBox(height: 12),
         Container(
@@ -932,6 +990,163 @@ class _PoemDetailViewState extends State<PoemDetailView> {
           ),
         ),
       ],
+    );
+  }
+
+  Future<void> _showAiEnrichmentDialog(
+    BuildContext context,
+    TraditionalPalette palette,
+    Poem poem,
+  ) async {
+    final TextEditingController apiKeyCtrl = TextEditingController();
+    final TextEditingController baseUrlCtrl = TextEditingController(
+      text: ClassicalKnowledgeService.kDefaultAiBaseUrl,
+    );
+    final TextEditingController modelCtrl = TextEditingController(
+      text: ClassicalKnowledgeService.kDefaultAiModel,
+    );
+
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          backgroundColor: palette.cardSurface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: BorderSide(color: palette.borderLine),
+          ),
+          title: Row(
+            children: <Widget>[
+              const CinnabarSeal(
+                text: '考据',
+                style: SealStyle.yin,
+                fontSize: 11,
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  '百科与 AI 深度考据增强',
+                  style: AppTypography.sectionHeading(palette.inkText),
+                ),
+              ),
+            ],
+          ),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    '当前已启用「内置古典名家/典故知识库 + 逐联起承转合深度解析 + 中文维基百科史料检索」。如需调用大模型进一步定制研读《${poem.title}》，可在此填入可选 API Key（留空则仅执行在线百科史料增补）：',
+                    style: AppTypography.prose(
+                      palette.secondaryText,
+                      fontSize: 13.5,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: apiKeyCtrl,
+                    obscureText: true,
+                    style: AppTypography.label(palette.inkText, fontSize: 13),
+                    decoration: InputDecoration(
+                      labelText: 'AI API Key（可选，支持 Gemini / OpenAI 兼容）',
+                      labelStyle: AppTypography.label(
+                        palette.mutedText,
+                        fontSize: 12,
+                      ),
+                      isDense: true,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: baseUrlCtrl,
+                    style: AppTypography.label(palette.inkText, fontSize: 13),
+                    decoration: InputDecoration(
+                      labelText: 'API Base URL',
+                      labelStyle: AppTypography.label(
+                        palette.mutedText,
+                        fontSize: 12,
+                      ),
+                      isDense: true,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: modelCtrl,
+                    style: AppTypography.label(palette.inkText, fontSize: 13),
+                    decoration: InputDecoration(
+                      labelText: '模型名称（如 gemini-2.5-flash / deepseek-chat）',
+                      labelStyle: AppTypography.label(
+                        palette.mutedText,
+                        fontSize: 12,
+                      ),
+                      isDense: true,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(
+                '取消',
+                style: AppTypography.label(palette.mutedText),
+              ),
+            ),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: palette.cinnabarRed,
+                foregroundColor: palette.onCinnabar,
+              ),
+              onPressed: () async {
+                final String key = apiKeyCtrl.text.trim();
+                final String url = baseUrlCtrl.text.trim();
+                final String model = modelCtrl.text.trim();
+                Navigator.of(dialogContext).pop();
+                final Poem? updated = await widget.viewModel.enrichPoemOnline(
+                  poem,
+                  customApiKey: key.isEmpty ? null : key,
+                  customBaseUrl: url.isEmpty ? null : url,
+                  customModel: model.isEmpty ? null : model,
+                );
+                if (!mounted) return;
+                ScaffoldMessenger.of(this.context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      updated != null
+                          ? '已更新《${poem.title}》深度考据与作者生平'
+                          : '已完成《${poem.title}》古典文献库与百科核验',
+                      style: AppTypography.label(
+                        TraditionalPalette.kXuanPaperWhite,
+                      ),
+                    ),
+                    backgroundColor: TraditionalPalette.kInkBlack,
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+              icon: const Icon(Icons.auto_awesome_rounded, size: 15),
+              label: Text(
+                '立即深度考据',
+                style: AppTypography.label(palette.onCinnabar, fontSize: 13),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -1140,12 +1355,16 @@ class _PoemDetailViewState extends State<PoemDetailView> {
                             children: <Widget>[
                               Row(
                                 children: <Widget>[
-                                  Text(
-                                    '《${work.title}》',
-                                    style: AppTypography.label(
-                                      palette.inkText,
-                                      fontSize: 14.5,
-                                      fontWeight: FontWeight.w600,
+                                  Flexible(
+                                    child: Text(
+                                      '《${work.title}》',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: AppTypography.label(
+                                        palette.inkText,
+                                        fontSize: 14.5,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
                                   ),
                                   if (isCurrent) ...<Widget>[
@@ -1191,6 +1410,40 @@ class _PoemDetailViewState extends State<PoemDetailView> {
                 ),
               );
             }),
+            if (_activePoem.isRemote && author.name != '佚名')
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    key: const Key('fetch_more_author_works_button'),
+                    onPressed: widget.viewModel.isLoadingAuthorWorks
+                        ? null
+                        : () {
+                            widget.viewModel.loadMoreAuthorWorks(
+                              _activePoem,
+                              minTargetCount: authorWorks.length + 3,
+                            );
+                          },
+                    icon: Icon(
+                      widget.viewModel.isLoadingAuthorWorks
+                          ? Icons.sync_rounded
+                          : Icons.travel_explore_rounded,
+                      size: 15,
+                      color: palette.themeAccent,
+                    ),
+                    label: Text(
+                      widget.viewModel.isLoadingAuthorWorks
+                          ? '正在从诗泉云库检索 ${author.name} 诗作...'
+                          : '从诗泉云库检索更多「${author.name}」作品',
+                      style: AppTypography.label(
+                        palette.themeAccent,
+                        fontSize: 12.5,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
           ],
         ],
       ),

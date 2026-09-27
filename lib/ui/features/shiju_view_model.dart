@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import '../../data/repositories/poetry_repository.dart';
 import '../../data/services/app_update_service.dart';
+import '../../data/services/classical_knowledge_service.dart';
 import '../../data/services/wechat_auth_service.dart';
 import '../../domain/models/app_update_model.dart';
 import '../../domain/models/auth_user_model.dart';
@@ -54,6 +55,8 @@ class ShiJuViewModel extends ChangeNotifier {
   // 「诗泉 (poetry.palemoky.com)」37 万首云端古诗词数据库状态
   bool _isFetchingShiquanRandom = false;
   bool _isSearchingShiquan = false;
+  bool _isLoadingAuthorWorks = false;
+  bool _isEnrichingPoem = false;
   ShiquanStats _shiquanStats = const ShiquanStats();
   List<Poem> _remoteSearchResults = <Poem>[];
 
@@ -84,6 +87,12 @@ class ShiJuViewModel extends ChangeNotifier {
 
   /// 是否正在调用「诗泉 API」全文搜索
   bool get isSearchingShiquan => _isSearchingShiquan;
+
+  /// 是否正在从云端拉取同一诗人的更多作品
+  bool get isLoadingAuthorWorks => _isLoadingAuthorWorks;
+
+  /// 是否正在执行在线百科/AI 深度考据增强
+  bool get isEnrichingPoem => _isEnrichingPoem;
 
   /// 「诗泉 API」云端诗库统计数据（默认 371,313 首诗词 · 13,577 位诗人）
   ShiquanStats get shiquanStats => _shiquanStats;
@@ -396,18 +405,27 @@ class ShiJuViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 选中指定诗词作为当前诗词并记录阅读历史
+  /// 选中指定诗词作为当前诗词并记录阅读历史（若为旧版简略缓存则自动升级，并后台补充同作者作品）
   Future<void> selectPoem(Poem poem) async {
-    if (poem.isRemote) {
-      await _repository.registerRemotePoems(<Poem>[poem]);
+    final Poem upgraded = ClassicalKnowledgeService.upgradePoemIfNeeded(poem);
+    if (upgraded.isRemote) {
+      await _repository.registerRemotePoems(
+        <Poem>[upgraded],
+        overwriteExisting: !identical(upgraded, poem),
+      );
       _poems = _repository.getAllPoems();
     }
-    final int idx = _poems.indexWhere((Poem p) => p.id == poem.id);
+    final int idx = _poems.indexWhere((Poem p) => p.id == upgraded.id);
     if (idx != -1) {
       _currentIndex = idx;
     }
-    await recordReadingHistory(poem.id, notify: false);
+    await recordReadingHistory(upgraded.id, notify: false);
     notifyListeners();
+
+    // 若为诗泉云端诗词，后台自动拉取该作者的更多代表诗词并尝试在线百科考据补全
+    if (upgraded.isRemote) {
+      unawaited(loadMoreAuthorWorks(upgraded));
+    }
   }
 
   /// 从「诗泉 API (poetry.palemoky.com)」37 万首云库中随机采撷一首新诗并切换展示
@@ -560,13 +578,69 @@ class ShiJuViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 获取作者详情
-  Author? getAuthorForPoem(Poem poem) =>
-      _repository.getAuthorById(poem.authorId);
+  /// 根据 ID 获取最新诗词实例
+  Poem? getPoemById(String id) => _repository.getPoemById(id);
 
-  /// 获取同一作者收录的全部诗词
-  List<Poem> getAuthorWorks(String authorId) =>
-      _repository.getPoemsByAuthor(authorId);
+  /// 获取作者详情（融合内置名家库、扩充历代诗人详传库与在线百科考据）
+  Author? getAuthorForPoem(Poem poem) =>
+      _repository.getAuthorById(poem.authorId, fallbackPoem: poem);
+
+  /// 获取同一作者收录的全部诗词（按 authorId 与姓名双向聚合）
+  List<Poem> getAuthorWorks(String authorId, {String? authorName}) =>
+      _repository.getPoemsByAuthor(authorId, authorName: authorName);
+
+  /// 自动或手动从「诗泉 API」拉取该诗人的更多代表作品，并执行在线百科考据补全
+  Future<List<Poem>> loadMoreAuthorWorks(
+    Poem poem, {
+    int minTargetCount = 4,
+  }) async {
+    if (_isLoadingAuthorWorks) {
+      return getAuthorWorks(poem.authorId, authorName: poem.authorName);
+    }
+    _isLoadingAuthorWorks = true;
+    notifyListeners();
+
+    try {
+      final List<Poem> works = await _repository.fetchMoreWorksForAuthor(
+        poem,
+        minTargetCount: minTargetCount,
+      );
+      await _repository.enrichPoemAndAuthorOnline(poem);
+      _poems = _repository.getAllPoems();
+      return works;
+    } finally {
+      _isLoadingAuthorWorks = false;
+      notifyListeners();
+    }
+  }
+
+  /// 调用可选 AI 接口或在线公开百科，对指定诗词执行深度考据增强
+  Future<Poem?> enrichPoemOnline(
+    Poem poem, {
+    String? customApiKey,
+    String? customBaseUrl,
+    String? customModel,
+  }) async {
+    if (_isEnrichingPoem) return null;
+    _isEnrichingPoem = true;
+    notifyListeners();
+
+    try {
+      final Poem? enriched = await _repository.enrichPoemAndAuthorOnline(
+        poem,
+        customApiKey: customApiKey,
+        customBaseUrl: customBaseUrl,
+        customModel: customModel,
+      );
+      if (enriched != null) {
+        _poems = _repository.getAllPoems();
+      }
+      return enriched;
+    } finally {
+      _isEnrichingPoem = false;
+      notifyListeners();
+    }
+  }
 
   // ===========================================================================
   // Jenkins 持续交付 · 客户端自动检测更新与一键热更新闭环

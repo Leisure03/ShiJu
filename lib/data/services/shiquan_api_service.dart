@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../../domain/models/poem_model.dart';
 import '../../ui/core/theme/traditional_palette.dart';
+import 'classical_knowledge_service.dart';
 import 'curated_poetry_data.dart';
 
 /// 诗泉搜索分页结果封装
@@ -242,8 +243,54 @@ class ShiquanApiService {
     return null;
   }
 
+  /// 拉取指定诗人的多首代表诗词（用于详情页作者作品聚合，避免仅显示单首作品）
+  Future<List<Poem>> fetchPoemsByAuthor(
+    String authorName, {
+    int maxCount = 6,
+    String lang = 'zh-Hans',
+  }) async {
+    final String cleanAuthor = authorName.trim();
+    if (!enableNetwork || cleanAuthor.isEmpty || cleanAuthor == '佚名') {
+      return const <Poem>[];
+    }
+
+    final List<Poem> collected = <Poem>[];
+    // 1. 先通过 searchPoems 检索该作者名下的作品
+    final ShiquanSearchResult searchRes = await searchPoems(
+      query: cleanAuthor,
+      page: 1,
+      pageSize: 12,
+      lang: lang,
+    );
+    for (final Poem p in searchRes.poems) {
+      if (p.authorName == cleanAuthor &&
+          !collected.any((Poem e) => e.id == p.id || e.title == p.title)) {
+        collected.add(p);
+        if (collected.length >= maxCount) {
+          return collected;
+        }
+      }
+    }
+
+    // 2. 若搜索结果不足，补充调用按作者随机抽取接口
+    for (int i = 0; i < 2 && collected.length < maxCount; i++) {
+      final Poem? randomWork = await fetchRandomPoem(
+        author: cleanAuthor,
+        lang: lang,
+      );
+      if (randomWork != null &&
+          randomWork.authorName == cleanAuthor &&
+          !collected.any(
+            (Poem e) => e.id == randomWork.id || e.title == randomWork.title,
+          )) {
+        collected.add(randomWork);
+      }
+    }
+    return collected;
+  }
+
   /// 将「诗泉 API」返回的单首诗词 JSON 转换为领域模型 [Poem]，
-  /// 自动提炼代表名句、推断意境标签、匹配中国传统色主题，并生成诗意导读与格律考据。
+  /// 自动提炼代表名句、推断意境标签、匹配中国传统色主题，并生成深度考据、逐联赏析与训诂注释。
   static Poem mapShiquanJsonToPoem(Map<String, dynamic> raw) {
     final Object? rawId = raw['id'];
     final int numericId =
@@ -272,10 +319,12 @@ class ShiquanApiService {
       authorName = '佚名';
     }
 
-    final String authorId = _knownAuthorNameMap[authorName] ??
-        (authorNumericId > 0
-            ? 'shiquan_author_$authorNumericId'
-            : 'shiquan_author_${authorName.hashCode.abs()}');
+    final String authorId =
+        ClassicalKnowledgeService.resolveKnownAuthorId(authorName) ??
+            _knownAuthorNameMap[authorName] ??
+            (authorNumericId > 0
+                ? 'shiquan_author_$authorNumericId'
+                : 'shiquan_author_${authorName.hashCode.abs()}');
 
     // 解析朝代
     String dynasty = '唐';
@@ -288,18 +337,6 @@ class ShiquanApiService {
     }
     if (dynasty.isEmpty || dynasty == '其他') {
       dynasty = '古典';
-    }
-
-    // 解析体裁
-    String genre = '古体诗';
-    if (raw['type'] is Map<String, dynamic>) {
-      final Map<String, dynamic> typeMap = raw['type'] as Map<String, dynamic>;
-      genre = ((typeMap['name'] as String?) ?? '古体诗').trim();
-    } else if (raw['type'] is String) {
-      genre = (raw['type'] as String).trim();
-    }
-    if (genre.isEmpty || genre == '其他') {
-      genre = '$dynasty诗';
     }
 
     // 解析诗句段落
@@ -321,6 +358,21 @@ class ShiquanApiService {
     }
     if (paragraphs.isEmpty) {
       paragraphs.add('清风明月本无价，近水远山皆有情。');
+    }
+
+    // 解析体裁
+    String genre = '';
+    if (raw['type'] is Map<String, dynamic>) {
+      final Map<String, dynamic> typeMap = raw['type'] as Map<String, dynamic>;
+      genre = ((typeMap['name'] as String?) ?? '').trim();
+    } else if (raw['type'] is String) {
+      genre = (raw['type'] as String).trim();
+    }
+    if (genre.isEmpty || genre == '其他') {
+      genre = ClassicalKnowledgeService.inferGenreFromParagraphs(
+        paragraphs,
+        dynasty,
+      );
     }
 
     // 若与内置 18 首精选名篇同标题且同作者，优先复用内置精修赏析与译注
@@ -351,8 +403,6 @@ class ShiquanApiService {
       title: title,
     );
 
-    final String fullText = paragraphs.join('');
-
     return Poem(
       id: poemId,
       featuredQuote: featuredQuote,
@@ -365,34 +415,34 @@ class ShiquanApiService {
       paletteType: paletteType,
       isRemote: true,
       genre: genre,
-      translation: _generatePoeticTranslation(
+      translation: ClassicalKnowledgeService.generateTranslation(
+        title: title,
+        dynasty: dynasty,
+        authorName: authorName,
+        genre: genre,
+        paragraphs: paragraphs,
+      ),
+      annotations: ClassicalKnowledgeService.generateAnnotations(
+        title: title,
+        dynasty: dynasty,
+        authorName: authorName,
+        genre: genre,
+        paragraphs: paragraphs,
+      ),
+      background: ClassicalKnowledgeService.generateBackground(
+        title: title,
+        dynasty: dynasty,
+        authorName: authorName,
+        genre: genre,
+        paragraphs: paragraphs,
+      ),
+      appreciation: ClassicalKnowledgeService.generateAppreciation(
         title: title,
         dynasty: dynasty,
         authorName: authorName,
         genre: genre,
         featuredQuote: featuredQuote,
         paragraphs: paragraphs,
-      ),
-      annotations: _generateAnnotations(
-        title: title,
-        dynasty: dynasty,
-        authorName: authorName,
-        genre: genre,
-        fullText: fullText,
-      ),
-      background: _generateBackground(
-        title: title,
-        dynasty: dynasty,
-        authorName: authorName,
-        genre: genre,
-        numericId: numericId,
-      ),
-      appreciation: _generateAppreciation(
-        title: title,
-        dynasty: dynasty,
-        authorName: authorName,
-        genre: genre,
-        featuredQuote: featuredQuote,
         tags: tags,
       ),
     );
@@ -448,7 +498,7 @@ class ShiquanApiService {
     checkAndAdd('送别', RegExp(r'[送别离赠辞行舟柳亭酒杯岐路万里故人]'));
     checkAndAdd('豪放', RegExp(r'[剑酒豪壮万里千秋苍茫风云吞山河雄大江铁马]'));
     checkAndAdd('婉约', RegExp(r'[花春香泪柳帘眉心红芳雨莺燕相思柔情]'));
-    checkAndAdd('哲理', RegExp(r'[道禅空心悟真知古今天地人生浮生乾坤造化]'));
+    checkAndAdd('哲理', RegExp(r'[道禅空心悟真知古今天地人生浮生乾坤造化贤名]'));
     checkAndAdd('旷达', RegExp(r'[闲笑醉任平生悠然逍遥清风卧沧海扁舟天地]'));
 
     if (matched.isEmpty) {
@@ -500,90 +550,5 @@ class ShiquanApiService {
     ];
     final int seed = numericId > 0 ? numericId : title.hashCode.abs();
     return lightPalettes[seed % lightPalettes.length];
-  }
-
-  static String _generatePoeticTranslation({
-    required String title,
-    required String dynasty,
-    required String authorName,
-    required String genre,
-    required String featuredQuote,
-    required List<String> paragraphs,
-  }) {
-    final int lineCount = paragraphs.length;
-    return '本篇为$dynasty代诗人$authorName所作《$title》（体裁：$genre，共 $lineCount 联/句）。'
-        '诗中以「$featuredQuote」为核心意象展开，通过凝练隽永的古典笔触，将眼前风物与胸中情怀融为一炉。'
-        '全篇由景入情、语淡而味永，在平仄回环的声律之间，勾勒出清雅深远的东方诗学画卷。';
-  }
-
-  static List<PoemAnnotation> _generateAnnotations({
-    required String title,
-    required String dynasty,
-    required String authorName,
-    required String genre,
-    required String fullText,
-  }) {
-    final List<PoemAnnotation> notes = <PoemAnnotation>[
-      PoemAnnotation(
-        term: '体裁 · $genre',
-        explanation: '本篇收录于「诗泉」古典诗词库，属$dynasty代「$genre」体裁，讲求声律谐婉、意脉连贯。',
-      ),
-      PoemAnnotation(
-        term: '题解 ·《$title》',
-        explanation: '$authorName借此题寄寓兴怀，或纪行游历，或感物吟志，展现$dynasty代文人的精神风貌。',
-      ),
-    ];
-
-    if (fullText.contains('月')) {
-      notes.add(
-        const PoemAnnotation(
-          term: '明月意象',
-          explanation: '古典诗词中常以明月寄托高洁志趣、天地永恒之思或千里怀远之情。',
-        ),
-      );
-    } else if (fullText.contains('山') || fullText.contains('水')) {
-      notes.add(
-        const PoemAnnotation(
-          term: '山水林泉',
-          explanation: '以自然山水之清幽澄明映照诗人内心之超然物外，体现“仁者乐山，智者乐水”的审美观照。',
-        ),
-      );
-    } else {
-      notes.add(
-        const PoemAnnotation(
-          term: '诗泉典藏',
-          explanation: '数据源自开源古籍工程 chinese-poetry 与诗泉（poetry.palemoky.com）云端数字善本库。',
-        ),
-      );
-    }
-    return notes;
-  }
-
-  static String _generateBackground({
-    required String title,
-    required String dynasty,
-    required String authorName,
-    required String genre,
-    required int numericId,
-  }) {
-    final String archiveCode =
-        numericId > 0 ? '诗泉善本编号 #$numericId' : '诗泉云端善本库';
-    return '《$title》系$dynasty代$authorName传世之作（$archiveCode）。'
-        '彼时诗人感于时序流转与世事境遇，遂即景生情、援笔成篇。'
-        '此作经历代总集选本流传，收录于开源古典文学工程「诗泉（poetry.palemoky.com）」37 万首全库之中，是研究$dynasty代$genre创作风貌的重要篇目。';
-  }
-
-  static String _generateAppreciation({
-    required String title,
-    required String dynasty,
-    required String authorName,
-    required String genre,
-    required String featuredQuote,
-    required List<String> tags,
-  }) {
-    final String tagDesc = tags.map((String t) => '「#$t」').join('、');
-    return '细品$authorName这首《$title》，全篇兼具$tagDesc之东方美学气韵。'
-        '尤以「$featuredQuote」一联最为传神：字句洗练而意象饱满，起承转合间既有古典格律的端严法度，'
-        '又留有水墨画般的空灵留白，令读者在吟咏之际得以跨越千年时空，与古人共赏天地清欢。';
   }
 }

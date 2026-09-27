@@ -622,6 +622,53 @@ void main() {
       final Author? dynamicAuthor = rebootedVm.getAuthorForPoem(searchedPoem);
       expect(dynamicAuthor, isNotNull);
       expect(dynamicAuthor!.name, '释正觉');
+      expect(dynamicAuthor.courtesyName, contains('宏智'));
+      expect(dynamicAuthor.biography, contains('曹洞宗'));
+    });
+
+    test('模块八：胡曾《咏史诗：颍川》及云端诗词深度考据、逐句起承转合鉴赏、典故注释与旧缓存热升级', () async {
+      final Poem yingchuanPoem = ShiquanApiService.mapShiquanJsonToPoem(
+        <String, dynamic>{
+          'id': 365159,
+          'title': '咏史诗：颍川',
+          'content': <String>[
+            '古贤高尚不争名，行止由来动杳冥。',
+            '今日浪为千里客，看花惭上德星亭。',
+          ],
+          'author': <String, dynamic>{'id': 7944, 'name': '胡曾'},
+          'dynasty': <String, dynamic>{'id': 6, 'name': '唐'},
+          'type': <String, dynamic>{'id': 12, 'name': '七言绝句'},
+        },
+      );
+
+      // 验证不再包含旧版空洞套话，而是包含详实史料考据与逐句起承转合剖析
+      expect(yingchuanPoem.authorId, 'hu_zeng');
+      expect(yingchuanPoem.background, contains('许由'));
+      expect(yingchuanPoem.background, contains('陈寔'));
+      expect(yingchuanPoem.background, contains('德星亭'));
+      expect(yingchuanPoem.appreciation, contains('古贤高尚不争名'));
+      expect(yingchuanPoem.appreciation, contains('行止由来动杳冥'));
+      expect(yingchuanPoem.appreciation, contains('今日浪为千里客'));
+      expect(yingchuanPoem.appreciation, contains('看花惭上德星亭'));
+      expect(
+        yingchuanPoem.annotations.any((PoemAnnotation a) => a.term == '德星亭'),
+        isTrue,
+      );
+
+      final PoetryRepository repo = PoetryRepository(
+        storageService: LocalStorageService(driver: InMemoryStorageDriver()),
+        shiquanApiService: ShiquanApiService(enableNetwork: false),
+      );
+      await repo.registerRemotePoems(<Poem>[yingchuanPoem]);
+      final Author? huZeng = repo.getAuthorById(
+        yingchuanPoem.authorId,
+        fallbackPoem: yingchuanPoem,
+      );
+      expect(huZeng, isNotNull);
+      expect(huZeng!.name, '胡曾');
+      expect(huZeng.courtesyName, contains('咸通'));
+      expect(huZeng.biography, contains('一百五十首'));
+      expect(huZeng.biography, isNot(contains('收录于开源古典文学工程「诗泉')));
     });
   });
 }

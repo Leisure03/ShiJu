@@ -1,11 +1,12 @@
 import '../../domain/models/app_update_model.dart';
 import '../../domain/models/auth_user_model.dart';
 import '../../domain/models/poem_model.dart';
+import '../services/classical_knowledge_service.dart';
 import '../services/curated_poetry_data.dart';
 import '../services/local_storage_service.dart';
 import '../services/shiquan_api_service.dart';
 
-/// 诗词与名家数据仓库（Single Source of Truth：融合内置精修善本 + 诗泉 37 万首云库 + 本地持久化缓存）
+/// 诗词与名家数据仓库（Single Source of Truth：融合内置精修善本 + 诗泉 37 万首云库 + 古典考据知识库 + 本地持久化缓存）
 class PoetryRepository {
   PoetryRepository({
     LocalStorageService? storageService,
@@ -18,6 +19,9 @@ class PoetryRepository {
 
   /// 已从「诗泉 API」拉取并缓存在本地的诗词列表
   final List<Poem> _remotePoems = <Poem>[];
+
+  /// 在线补充考据后的作者传记缓存
+  final Map<String, Author> _enrichedAuthors = <String, Author>{};
 
   ShiquanApiService get shiquanApiService => _shiquanApiService;
 
@@ -40,42 +44,83 @@ class PoetryRepository {
         return poem;
       }
     }
-    for (final Poem poem in _remotePoems) {
-      if (poem.id == id) {
-        return poem;
+    for (int i = 0; i < _remotePoems.length; i++) {
+      if (_remotePoems[i].id == id) {
+        final Poem upgraded =
+            ClassicalKnowledgeService.upgradePoemIfNeeded(_remotePoems[i]);
+        if (!identical(upgraded, _remotePoems[i])) {
+          _remotePoems[i] = upgraded;
+        }
+        return _remotePoems[i];
       }
     }
     return null;
   }
 
-  /// 根据作者 ID 查询作者详情（若为诗泉云端诗人，则自动生成典藏诗人生平小传）
-  Author? getAuthorById(String authorId) {
+  /// 根据作者 ID 查询作者详情（融合内置名家库、扩充历代诗人详传库与在线百科考据）
+  Author? getAuthorById(String authorId, {Poem? fallbackPoem}) {
+    if (_enrichedAuthors.containsKey(authorId)) {
+      return _enrichedAuthors[authorId];
+    }
     final Author? curatedAuthor = CuratedPoetryData.authors[authorId];
     if (curatedAuthor != null) {
       return curatedAuthor;
     }
-    for (final Poem poem in _remotePoems) {
-      if (poem.authorId == authorId) {
-        return Author(
-          id: authorId,
-          name: poem.authorName,
-          dynasty: poem.dynasty,
-          courtesyName: '诗泉古籍典藏诗人',
-          lifeSpan: '${poem.dynasty}代名家',
-          biography:
-              '${poem.authorName}，${poem.dynasty}代诗人，其诗作收录于开源古典文学工程「诗泉（poetry.palemoky.com）」37 万首全库之中。'
-              '作品讲究声律格调与意象经营，代表作有《${poem.title}》等，字里行间尽显${poem.dynasty}代文人雅士之精神风貌。',
-        );
+
+    // 寻找关联诗词以提取作者姓名与朝代
+    Poem? referencePoem = fallbackPoem;
+    if (referencePoem == null) {
+      for (final Poem poem in getAllPoems()) {
+        if (poem.authorId == authorId) {
+          referencePoem = poem;
+          break;
+        }
       }
     }
-    return null;
+    if (referencePoem == null) {
+      return null;
+    }
+
+    final List<Poem> works = getPoemsByAuthor(
+      authorId,
+      authorName: referencePoem.authorName,
+    );
+    return ClassicalKnowledgeService.resolveAuthor(
+      authorId: authorId,
+      authorName: referencePoem.authorName,
+      dynasty: referencePoem.dynasty,
+      authorPoems: works.isNotEmpty ? works : <Poem>[referencePoem],
+    );
   }
 
-  /// 查询某位作者收录的全部诗词（用于详情页作者卡片作品聚合，自动合并内置与诗泉同作者作品）
-  List<Poem> getPoemsByAuthor(String authorId) {
-    return getAllPoems()
-        .where((Poem poem) => poem.authorId == authorId)
-        .toList();
+  /// 查询某位作者收录的全部诗词（自动按 authorId 与 authorName 双向聚合内置与诗泉同作者作品）
+  List<Poem> getPoemsByAuthor(String authorId, {String? authorName}) {
+    String? resolvedName = authorName;
+    if (resolvedName == null || resolvedName.isEmpty) {
+      final Author? curated = CuratedPoetryData.authors[authorId];
+      if (curated != null) {
+        resolvedName = curated.name;
+      } else {
+        for (final Poem p in getAllPoems()) {
+          if (p.authorId == authorId) {
+            resolvedName = p.authorName;
+            break;
+          }
+        }
+      }
+    }
+
+    final List<Poem> result = <Poem>[];
+    for (final Poem poem in getAllPoems()) {
+      final bool sameId = poem.authorId == authorId;
+      final bool sameName = resolvedName != null &&
+          resolvedName.isNotEmpty &&
+          poem.authorName == resolvedName;
+      if ((sameId || sameName) && !result.any((Poem e) => e.id == poem.id)) {
+        result.add(poem);
+      }
+    }
+    return result;
   }
 
   /// 按关键词（诗句、诗名、作者、朝代、体裁）与意境标签过滤本地已收录/缓存的诗词
@@ -119,27 +164,38 @@ class PoetryRepository {
     }).toList();
   }
 
-  /// 初始化加载本地缓存的「诗泉 API」诗词
+  /// 初始化加载本地缓存的「诗泉 API」诗词，并自动将旧版简略模板热升级为深度考据内容
   Future<List<Poem>> loadCachedRemotePoems() async {
     final List<Poem> saved = await _storageService.getCachedRemotePoems();
     _remotePoems.clear();
+    bool upgradedAny = false;
     for (final Poem poem in saved) {
       final bool inCurated =
           CuratedPoetryData.poems.any((Poem c) => c.id == poem.id);
       if (!inCurated && !_remotePoems.any((Poem r) => r.id == poem.id)) {
-        _remotePoems.add(poem);
+        final Poem upgraded =
+            ClassicalKnowledgeService.upgradePoemIfNeeded(poem);
+        if (!identical(upgraded, poem)) {
+          upgradedAny = true;
+        }
+        _remotePoems.add(upgraded);
       }
+    }
+    if (upgradedAny) {
+      await _storageService.saveCachedRemotePoems(_remotePoems);
     }
     return List<Poem>.unmodifiable(_remotePoems);
   }
 
-  /// 将「诗泉 API」返回的诗词注册至内存与本地持久化数据库
+  /// 将「诗泉 API」返回的诗词注册至内存与本地持久化数据库（支持覆盖更新已增强的同 ID 诗词）
   Future<bool> registerRemotePoems(
     Iterable<Poem> poems, {
     bool persist = true,
+    bool overwriteExisting = false,
   }) async {
     bool changed = false;
-    for (final Poem poem in poems) {
+    for (final Poem rawPoem in poems) {
+      final Poem poem = ClassicalKnowledgeService.upgradePoemIfNeeded(rawPoem);
       final bool inCurated =
           CuratedPoetryData.poems.any((Poem c) => c.id == poem.id);
       if (inCurated) {
@@ -150,6 +206,12 @@ class PoetryRepository {
       if (existingIdx == -1) {
         _remotePoems.add(poem);
         changed = true;
+      } else if (overwriteExisting ||
+          ClassicalKnowledgeService.hasLegacyTemplateContent(
+            _remotePoems[existingIdx],
+          )) {
+        _remotePoems[existingIdx] = poem;
+        changed = true;
       }
     }
     if (changed && _remotePoems.length > 160) {
@@ -159,6 +221,80 @@ class PoetryRepository {
       await _storageService.saveCachedRemotePoems(_remotePoems);
     }
     return changed;
+  }
+
+  /// 为当前查看的诗人自动从「诗泉 API」拉取更多同作者代表诗作，丰富作者作品聚合列表
+  Future<List<Poem>> fetchMoreWorksForAuthor(
+    Poem poem, {
+    int minTargetCount = 4,
+  }) async {
+    final List<Poem> currentWorks = getPoemsByAuthor(
+      poem.authorId,
+      authorName: poem.authorName,
+    );
+    if (currentWorks.length >= minTargetCount ||
+        !_shiquanApiService.enableNetwork) {
+      return currentWorks;
+    }
+
+    final List<Poem> fetched = await _shiquanApiService.fetchPoemsByAuthor(
+      poem.authorName,
+      maxCount: 6,
+    );
+    if (fetched.isNotEmpty) {
+      await registerRemotePoems(fetched);
+    }
+    return getPoemsByAuthor(poem.authorId, authorName: poem.authorName);
+  }
+
+  /// 在线调用公开百科或可选 AI 接口，深度增强指定诗词与诗人生平考据
+  Future<Poem?> enrichPoemAndAuthorOnline(
+    Poem poem, {
+    String? customApiKey,
+    String? customBaseUrl,
+    String? customModel,
+  }) async {
+    if (!_shiquanApiService.enableNetwork &&
+        (customApiKey == null || customApiKey.trim().isEmpty)) {
+      return null;
+    }
+
+    // 1. 尝试在线补充生僻诗人的维基百科史料传记
+    final Author? baseAuthor = getAuthorById(poem.authorId, fallbackPoem: poem);
+    if (baseAuthor != null) {
+      final Author? wikiAuthor =
+          await ClassicalKnowledgeService.fetchAuthorBioFromWiki(
+        baseAuthor: baseAuthor,
+        authorPoems: getPoemsByAuthor(
+          poem.authorId,
+          authorName: poem.authorName,
+        ),
+        httpClient: _shiquanApiService.httpClient,
+      );
+      if (wikiAuthor != null) {
+        _enrichedAuthors[poem.authorId] = wikiAuthor;
+      }
+    }
+
+    // 2. 尝试通过 AI 或在线百科深化该诗的背景、译注与赏析
+    if (poem.isRemote) {
+      final Poem? enrichedPoem =
+          await ClassicalKnowledgeService.enrichPoemOnline(
+        poem: poem,
+        customApiKey: customApiKey,
+        customBaseUrl: customBaseUrl,
+        customModel: customModel,
+        httpClient: _shiquanApiService.httpClient,
+      );
+      if (enrichedPoem != null) {
+        await registerRemotePoems(
+          <Poem>[enrichedPoem],
+          overwriteExisting: true,
+        );
+        return enrichedPoem;
+      }
+    }
+    return null;
   }
 
   /// 从「诗泉 API」随机采撷一首古诗词并自动落盘缓存
