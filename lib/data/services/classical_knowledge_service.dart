@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../../domain/models/poem_model.dart';
+import 'classical_poem_translator.dart';
 import 'curated_poetry_data.dart';
 
 /// 古典诗词深度考据、名家小传、典故训诂与逐联赏析引擎
@@ -16,8 +17,12 @@ class ClassicalKnowledgeService {
     if (!poem.isRemote) return false;
     return poem.background.contains('收录于开源古典文学工程「诗泉') ||
         poem.background.contains('感于时序流转与世事境遇，遂即景生情') ||
+        poem.background.trim().length < 45 ||
         poem.appreciation.contains('既有古典格律的端严法度，又留有水墨画般的空灵留白') ||
-        poem.translation.contains('为核心意象展开，通过凝练隽永的古典笔触') ||
+        poem.appreciation.trim().length < 45 ||
+        ClassicalPoemTranslator.isLegacyTemplateTranslation(poem.translation) ||
+        poem.annotations.isEmpty ||
+        poem.annotations.first.term.startsWith('体裁 · ') ||
         poem.annotations.any((PoemAnnotation a) => a.term == '诗泉典藏');
   }
 
@@ -1109,202 +1114,17 @@ class ClassicalKnowledgeService {
       return '颍川的古代先贤们品行高洁，从来不与世俗争夺虚名浮利；他们的一言一行、出仕与退隐，自古以来便能感通幽远深邃的天地星象。\n'
           '而如今我却为了区区科第功名，徒然漂泊异乡，沦为奔波千里的羁旅过客；春风里漫步赏花，我满心羞惭，实在无颜踏上那座纪念先贤聚德的德星亭。';
     }
-    if (fullText.contains('梅与山矾姊弟如') && fullText.contains('芗泽观')) {
-      return '为水仙花寻觅清雅的知己伴侣难道全然没有吗？寒梅与山矾花正像它的姊妹兄弟一般高洁相投。\n'
-          '我的内心早已沉潜于如兰蕙芳香般的清净道境之中，又何必非要临照江水、对着水仙而开口欢笑呢？';
-    }
-    if (fullText.contains('吾家青萍剑') && fullText.contains('鞍马月桥南')) {
-      return '我手持家传的锋利青萍宝剑，宰割治理一邑政务自是游刃有余、从容裕如。\n'
-          '送别之际，鞍马伫立在明月映照的南桥之畔，豪迈的剑气与月色光辉交相辉映在分手的岐路之间。';
-    }
-    if (fullText.contains('机梭未动若为颜') && fullText.contains('明月光中窥自己')) {
-      return '在妄念之机梭尚未发动之前，本来面目是何等澄澈？那一点空灵不昧的觉性早已契入圆融无碍的禅道之环。\n'
-          '在皎洁无瑕的明月清辉中返照自性本心，越过万里变幻的白云幻影，便能抵达清净本然的心灵家山。';
-    }
 
-    // 2. 通用逐句古典白话解译引擎
-    final List<String> translatedLines = <String>[];
-    final List<String> couplets = splitIntoCouplets(paragraphs);
-
-    for (int i = 0; i < couplets.length; i++) {
-      final String couplet = couplets[i];
-      translatedLines.add(_translateCoupletToModernProse(couplet, index: i));
-    }
-
-    return translatedLines.join('\n');
+    // 2. 调用逐句白话今译引擎生成通顺典雅的现代译文
+    return ClassicalPoemTranslator.translatePoem(
+      paragraphs: paragraphs,
+      title: title,
+      dynasty: dynasty,
+      authorName: authorName,
+    );
   }
 
-  /// 将古典诗联转化为流畅、贴合原文字面的现代散文诗译句
-  static String _translateCoupletToModernProse(
-    String couplet, {
-    required int index,
-  }) {
-    final List<String> parts = couplet
-        .split(RegExp(r'[，。！？；,.!?;]+'))
-        .map((String s) => s.trim())
-        .where((String s) => s.isNotEmpty)
-        .toList();
-
-    final List<String> renderedParts =
-        parts.map(_paraphraseClassicalClause).toList();
-    return '${renderedParts.join('；')}。';
-  }
-
-  /// 基于古典诗词高频字词映射表，将单句古诗扩展为通畅的现代白话散文表达
-  static String _paraphraseClassicalClause(String clause) {
-    String text = clause;
-    // 先处理常见古典句式与虚词结构
-    for (final MapEntry<RegExp, String Function(Match)> rule in _syntaxRules) {
-      final Match? m = rule.key.firstMatch(text);
-      if (m != null) {
-        return rule.value(m);
-      }
-    }
-
-    // 逐词扩展常见单音节古汉语词为双音节现代汉语词，避免生硬照搬原句
-    final StringBuffer out = StringBuffer();
-    int i = 0;
-    while (i < text.length) {
-      bool matchedTwo = false;
-      if (i + 2 <= text.length) {
-        final String bi = text.substring(i, i + 2);
-        if (_classicalBigramMap.containsKey(bi)) {
-          out.write(_classicalBigramMap[bi]);
-          i += 2;
-          matchedTwo = true;
-        }
-      }
-      if (!matchedTwo) {
-        final String ch = text[i];
-        out.write(_classicalMonogramMap[ch] ?? ch);
-        i += 1;
-      }
-    }
-    return out.toString();
-  }
-
-  static final List<MapEntry<RegExp, String Function(Match)>> _syntaxRules =
-      <MapEntry<RegExp, String Function(Match)>>[
-    MapEntry<RegExp, String Function(Match)>(
-      RegExp(r'^何须(.+)$'),
-      (Match m) => '又何必再去执着于${_expandSimpleWords(m.group(1)!)}呢',
-    ),
-    MapEntry<RegExp, String Function(Match)>(
-      RegExp(r'^不知(.+)$'),
-      (Match m) => '恍惚间不知晓${_expandSimpleWords(m.group(1)!)}',
-    ),
-    MapEntry<RegExp, String Function(Match)>(
-      RegExp(r'^独(.+)$'),
-      (Match m) => '独自一人${_expandSimpleWords(m.group(1)!)}',
-    ),
-  ];
-
-  static String _expandSimpleWords(String input) {
-    String res = input;
-    _classicalBigramMap.forEach((String k, String v) {
-      res = res.replaceAll(k, v);
-    });
-    return res;
-  }
-
-  static const Map<String, String> _classicalBigramMap = <String, String>{
-    '古贤': '古代的圣贤高士',
-    '高尚': '品节高尚超脱',
-    '不争': '从不争逐',
-    '行止': '言行出处与进退',
-    '由来': '自古以来便',
-    '杳冥': '幽深高远的天际星象',
-    '今日': '到了如今我却',
-    '浪为': '徒然沦为',
-    '千里': '奔波千里的',
-    '看花': '漫步赏花之际',
-    '惭上': '满怀羞惭地登上',
-    '德星': '纪念先贤聚德的德星',
-    '明月': '皎洁的明月',
-    '白云': '天边的白云',
-    '清风': '拂面的清风',
-    '春风': '和煦的春风',
-    '西风': '萧瑟的秋风',
-    '秋风': '飒飒的秋风',
-    '青山': '苍翠的远山',
-    '家山': '心灵栖息的故园家山',
-    '江水': '澄澈的江水',
-    '万里': '辽阔万里',
-    '百年': '人生百年岁月',
-    '平生': '这一生之中',
-    '故人': '远方的老友知己',
-    '相思': '深深的相思之情',
-    '孤舟': '江上的一叶孤舟',
-    '扁舟': '轻快的一叶扁舟',
-    '斜阳': '傍晚的落日斜阳',
-    '落日': '天边的落日余晖',
-    '芳草': '凄迷的春草',
-    '烟波': '浩渺的烟波',
-    '长安': '帝京长安',
-    '洛阳': '繁华的洛阳城',
-    '人间': '喧嚣的尘世人间',
-    '天地': '苍茫天地之间',
-    '乾坤': '浩瀚乾坤宇宙',
-    '何时': '到了什么时候才能',
-    '何处': '究竟在哪个地方',
-    '不觉': '不知不觉间',
-    '无情': '浑然无情地',
-    '多情': '满怀深情地',
-    '回首': '蓦然回首望去',
-    '凭栏': '独自倚靠着栏杆',
-    '独坐': '独自静坐于',
-    '归去': '踏上归途回去',
-    '归来': '倦游归来之时',
-    '惆怅': '心中满是惆怅感伤',
-    '寂寞': '清冷孤寂',
-    '凄凉': '满目凄凉萧索',
-  };
-
-  static const Map<String, String> _classicalMonogramMap = <String, String>{
-    '吾': '我',
-    '余': '我',
-    '君': '您',
-    '尔': '你',
-    '岂': '难道',
-    '莫': '不要',
-    '休': '莫要',
-    '欲': '想要',
-    '犹': '依然还',
-    '尚': '尚且',
-    '空': '徒然地',
-    '徒': '白白地',
-    '皆': '全都',
-    '俱': '一同',
-    '忽': '忽然间',
-    '渐': '渐渐地',
-    '頻': '频频地',
-    '频': '频频地',
-    '看': '凝望那',
-    '望': '远眺那',
-    '听': '静听那',
-    '闻': '听到那',
-    '忆': '追忆起',
-    '思': '思念着',
-    '怜': '怜惜那',
-    '惜': '惋惜那',
-    '愁': '心生愁绪',
-    '醉': '沉醉于',
-    '吟': '低声吟咏',
-    '笑': '含笑面对',
-    '泣': '落泪悲泣',
-    '啼': '啼鸣不止',
-    '飞': '凌空飞舞',
-    '落': '飘落纷飞',
-    '生': '悄然生起',
-    '入': '步入那',
-    '上': '登上那',
-    '下': '顺流而下',
-    '过': '行经那',
-    '宿': '夜宿于',
-    '泊': '停泊在',
-  };
-
-  /// 生成紧扣原诗字词与历史典故的逐条专业注释（绝不输出无关充数词条）
+  /// 生成紧扣原诗字词与历史典故的逐条专业注释（融合古典典故训诂库与逐句词库，绝不输出无关充数词条）
   static List<PoemAnnotation> generateAnnotations({
     required String title,
     required String dynasty,
@@ -1316,9 +1136,26 @@ class ClassicalKnowledgeService {
     final String corpus = '$title $fullText';
     final List<PoemAnnotation> annotations = <PoemAnnotation>[];
 
-    // 1. 扫描 100+ 精修古典诗词高频典故与疑难字词库，精确匹配诗中实际出现的词条
+    // 1. 优先从 ClassicalPoemTranslator 词汇与典故库提取注释
+    final List<PoemAnnotation> translatorNotes =
+        ClassicalPoemTranslator.generateAnnotations(
+      title: title,
+      dynasty: dynasty,
+      authorName: authorName,
+      genre: genre,
+      paragraphs: paragraphs,
+    );
+    for (final PoemAnnotation note in translatorNotes) {
+      if (!note.term.startsWith('题解 ·') &&
+          !annotations.any((PoemAnnotation a) => a.term == note.term)) {
+        annotations.add(note);
+      }
+    }
+
+    // 2. 扫描精修古典诗词高频典故与历史地理词库，精确补充诗中实际出现的词条
     for (final MapEntry<String, String> entry in _classicalLexicon.entries) {
-      if (corpus.contains(entry.key)) {
+      if (corpus.contains(entry.key) &&
+          !annotations.any((PoemAnnotation a) => a.term == entry.key)) {
         annotations.add(
           PoemAnnotation(
             term: entry.key,
@@ -1331,50 +1168,13 @@ class ClassicalKnowledgeService {
       }
     }
 
-    // 2. 若匹配到的具体词条少于 3 条，从诗题与首尾句自动提取核心词组进行针对性训诂
-    if (annotations.length < 3) {
-      final List<String> clauses = splitIntoClauses(paragraphs);
-      if (clauses.isNotEmpty) {
-        final String firstClause = clauses.first;
-        final String keyPhrase = firstClause.length >= 4
-            ? firstClause.substring(0, 4)
-            : firstClause;
-        if (!annotations.any((PoemAnnotation a) => a.term == keyPhrase)) {
-          annotations.add(
-            PoemAnnotation(
-              term: keyPhrase,
-              explanation:
-                  '出自本诗起句「$firstClause」，诗人以此四字发端立意，奠定全诗的时空背景与情感基调。',
-            ),
-          );
+    // 3. 若匹配到的具体词条少于 2 条，补充题解说明
+    if (annotations.length < 2) {
+      for (final PoemAnnotation note in translatorNotes) {
+        if (!annotations.any((PoemAnnotation a) => a.term == note.term)) {
+          annotations.add(note);
         }
       }
-      if (clauses.length >= 2) {
-        final String lastClause = clauses.last;
-        final String endPhrase = lastClause.length >= 3
-            ? lastClause.substring(lastClause.length - 3)
-            : lastClause;
-        if (!annotations.any((PoemAnnotation a) => a.term == endPhrase)) {
-          annotations.add(
-            PoemAnnotation(
-              term: endPhrase,
-              explanation:
-                  '见于本诗结句「$lastClause」，为全诗收束落脚之语，起画龙点睛、凝练诗旨之效。',
-            ),
-          );
-        }
-      }
-    }
-
-    // 3. 补充诗题题解（若尚未包含）
-    if (annotations.length < 3) {
-      annotations.add(
-        PoemAnnotation(
-          term: '《$title》题解',
-          explanation:
-              '$dynasty代$authorName所作$genre，题旨紧扣诗中核心本事，借眼前景物与古今际遇抒发胸臆。',
-        ),
-      );
     }
 
     return annotations;

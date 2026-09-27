@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../../data/services/classical_knowledge_service.dart';
+import '../../../../data/services/shiquan_api_service.dart';
 import '../../../../domain/models/poem_model.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/theme/traditional_palette.dart';
@@ -82,6 +83,9 @@ class _PoemDetailViewState extends State<PoemDetailView> {
   /// 是否展开作者名下全部诗词列表
   bool _authorWorksExpanded = true;
 
+  /// 当前在作者卡片中展开显示的诗作条数上限（避免一次渲染上百首造成滚动卡顿）
+  int _visibleAuthorWorksLimit = 12;
+
   final ScrollController _scrollController = ScrollController();
 
   @override
@@ -90,6 +94,11 @@ class _PoemDetailViewState extends State<PoemDetailView> {
     _activePoem = ClassicalKnowledgeService.upgradePoemIfNeeded(
       widget.initialPoem,
     );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        widget.viewModel.ensureAuthorPoemsLoaded(_activePoem.authorId);
+      }
+    });
   }
 
   @override
@@ -100,10 +109,15 @@ class _PoemDetailViewState extends State<PoemDetailView> {
 
   void _switchPoemInDetail(Poem newPoem) {
     if (_activePoem.id == newPoem.id) return;
+    final bool sameAuthor = _activePoem.authorId == newPoem.authorId;
+    final Poem upgraded = ClassicalKnowledgeService.upgradePoemIfNeeded(newPoem);
     setState(() {
-      _activePoem = ClassicalKnowledgeService.upgradePoemIfNeeded(newPoem);
+      _activePoem = upgraded;
+      if (!sameAuthor) {
+        _visibleAuthorWorksLimit = 12;
+      }
     });
-    widget.viewModel.selectPoem(_activePoem);
+    widget.viewModel.selectPoem(upgraded);
     if (_scrollController.hasClients) {
       _scrollController.animateTo(
         0,
@@ -137,6 +151,7 @@ class _PoemDetailViewState extends State<PoemDetailView> {
 
   @override
   Widget build(BuildContext context) {
+    _activePoem = ShiquanApiService.upgradeRemotePoemIfNeeded(_activePoem);
     return ListenableBuilder(
       listenable: widget.viewModel,
       builder: (BuildContext context, _) {
@@ -152,6 +167,13 @@ class _PoemDetailViewState extends State<PoemDetailView> {
           _activePoem.authorId,
           authorName: _activePoem.authorName,
         );
+        final int totalAuthorPoemCount =
+            widget.viewModel.getAuthorTotalPoemCount(_activePoem.authorId);
+        final bool isLoadingAuthorWorks =
+            widget.viewModel.isLoadingAuthorPoems(_activePoem.authorId) ||
+                widget.viewModel.isLoadingAuthorWorks;
+        final bool canLoadMoreFromCloud =
+            widget.viewModel.canLoadMoreAuthorPoems(_activePoem.authorId);
 
         return TweenAnimationBuilder<Color?>(
           tween: ColorTween(end: palette.background),
@@ -222,6 +244,9 @@ class _PoemDetailViewState extends State<PoemDetailView> {
                                   palette: palette,
                                   author: author,
                                   authorWorks: authorWorks,
+                                  totalAuthorPoemCount: totalAuthorPoemCount,
+                                  isLoadingAuthorWorks: isLoadingAuthorWorks,
+                                  canLoadMoreFromCloud: canLoadMoreFromCloud,
                                 ),
                             ],
                           ),
@@ -1177,7 +1202,37 @@ class _PoemDetailViewState extends State<PoemDetailView> {
     required TraditionalPalette palette,
     required Author author,
     required List<Poem> authorWorks,
+    required int totalAuthorPoemCount,
+    required bool isLoadingAuthorWorks,
+    required bool canLoadMoreFromCloud,
   }) {
+    final int displayTotal = totalAuthorPoemCount >= authorWorks.length
+        ? totalAuthorPoemCount
+        : authorWorks.length;
+
+    final List<Poem> visibleWorks;
+    if (authorWorks.length <= _visibleAuthorWorksLimit) {
+      visibleWorks = authorWorks;
+    } else {
+      final List<Poem> slice =
+          authorWorks.take(_visibleAuthorWorksLimit).toList();
+      if (!slice.any((Poem p) => p.id == _activePoem.id)) {
+        final Poem? activeInList = authorWorks
+            .where((Poem p) => p.id == _activePoem.id)
+            .firstOrNull;
+        if (activeInList != null) {
+          slice.insert(0, activeInList);
+          if (slice.length > _visibleAuthorWorksLimit) {
+            slice.removeLast();
+          }
+        }
+      }
+      visibleWorks = slice;
+    }
+
+    final bool hasMoreLoadedToExpand =
+        authorWorks.length > visibleWorks.length;
+
     return XuanPaperCard(
       palette: palette,
       padding: const EdgeInsets.all(26),
@@ -1297,7 +1352,7 @@ class _PoemDetailViewState extends State<PoemDetailView> {
                         const SizedBox(width: 8),
                         Flexible(
                           child: Text(
-                            '查看该作者收录的全部诗词（共 ${authorWorks.length} 首）',
+                            '查看该作者收录的全部诗词（共 $displayTotal 首）',
                             style: AppTypography.label(
                               palette.themeAccent,
                               fontSize: 13.5,
@@ -1308,11 +1363,27 @@ class _PoemDetailViewState extends State<PoemDetailView> {
                       ],
                     ),
                   ),
-                  Icon(
-                    _authorWorksExpanded
-                        ? Icons.keyboard_arrow_up_rounded
-                        : Icons.keyboard_arrow_down_rounded,
-                    color: palette.themeAccent,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      if (isLoadingAuthorWorks) ...<Widget>[
+                        SizedBox(
+                          width: 13,
+                          height: 13,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1.8,
+                            color: palette.themeAccent,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      Icon(
+                        _authorWorksExpanded
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.keyboard_arrow_down_rounded,
+                        color: palette.themeAccent,
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -1322,7 +1393,7 @@ class _PoemDetailViewState extends State<PoemDetailView> {
           // 展开的同作者作品列表（点击可直接平滑切换阅读）
           if (_authorWorksExpanded) ...<Widget>[
             const SizedBox(height: 12),
-            ...authorWorks.map((Poem work) {
+            ...visibleWorks.map((Poem work) {
               final bool isCurrent = work.id == _activePoem.id;
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
@@ -1410,36 +1481,57 @@ class _PoemDetailViewState extends State<PoemDetailView> {
                 ),
               );
             }),
-            if (_activePoem.isRemote && author.name != '佚名')
+            // 展开更多或从诗泉云端继续加载下一页作者诗作
+            if (hasMoreLoadedToExpand || canLoadMoreFromCloud)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton.icon(
-                    key: const Key('fetch_more_author_works_button'),
-                    onPressed: widget.viewModel.isLoadingAuthorWorks
-                        ? null
-                        : () {
-                            widget.viewModel.loadMoreAuthorWorks(
-                              _activePoem,
-                              minTargetCount: authorWorks.length + 3,
-                            );
-                          },
-                    icon: Icon(
-                      widget.viewModel.isLoadingAuthorWorks
-                          ? Icons.sync_rounded
-                          : Icons.travel_explore_rounded,
-                      size: 15,
-                      color: palette.themeAccent,
+                child: InkWell(
+                  key: const Key('author_works_load_more_button'),
+                  onTap: isLoadingAuthorWorks
+                      ? null
+                      : () async {
+                          setState(() {
+                            _visibleAuthorWorksLimit += 20;
+                          });
+                          if (!hasMoreLoadedToExpand && canLoadMoreFromCloud) {
+                            await widget.viewModel
+                                .loadMoreAuthorPoems(author.id);
+                          }
+                        },
+                  borderRadius: BorderRadius.circular(6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
                     ),
-                    label: Text(
-                      widget.viewModel.isLoadingAuthorWorks
-                          ? '正在从诗泉云库检索 ${author.name} 诗作...'
-                          : '从诗泉云库检索更多「${author.name}」作品',
-                      style: AppTypography.label(
-                        palette.themeAccent,
-                        fontSize: 12.5,
-                      ),
+                    decoration: BoxDecoration(
+                      color: palette.background.withValues(alpha: 0.45),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: palette.borderLine),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: <Widget>[
+                        Icon(
+                          Icons.unfold_more_rounded,
+                          size: 16,
+                          color: palette.themeAccent,
+                        ),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            hasMoreLoadedToExpand
+                                ? '展开更多该作者诗作（当前显示 ${visibleWorks.length} / 已载入 ${authorWorks.length} 首 · 共 $displayTotal 首）'
+                                : '从诗泉云库继续加载更多诗作（已载入 ${authorWorks.length} / 共 $displayTotal 首）',
+                            textAlign: TextAlign.center,
+                            style: AppTypography.label(
+                              palette.themeAccent,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -1450,3 +1542,4 @@ class _PoemDetailViewState extends State<PoemDetailView> {
     );
   }
 }
+

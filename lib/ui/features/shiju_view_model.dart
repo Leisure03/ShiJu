@@ -59,6 +59,7 @@ class ShiJuViewModel extends ChangeNotifier {
   bool _isEnrichingPoem = false;
   ShiquanStats _shiquanStats = const ShiquanStats();
   List<Poem> _remoteSearchResults = <Poem>[];
+  final Set<String> _loadingAuthorIds = <String>{};
 
   // Jenkins 自动更新 (OTA Auto-Update) 核心状态
   String _currentAppVersion = AppUpdateService.kDefaultAppVersion;
@@ -421,11 +422,7 @@ class ShiJuViewModel extends ChangeNotifier {
     }
     await recordReadingHistory(upgraded.id, notify: false);
     notifyListeners();
-
-    // 若为诗泉云端诗词，后台自动拉取该作者的更多代表诗词并尝试在线百科考据补全
-    if (upgraded.isRemote) {
-      unawaited(loadMoreAuthorWorks(upgraded));
-    }
+    unawaited(ensureAuthorPoemsLoaded(upgraded.authorId));
   }
 
   /// 从「诗泉 API (poetry.palemoky.com)」37 万首云库中随机采撷一首新诗并切换展示
@@ -455,6 +452,7 @@ class ShiJuViewModel extends ChangeNotifier {
       }
       await recordReadingHistory(remotePoem.id, notify: false);
       notifyListeners();
+      unawaited(ensureAuthorPoemsLoaded(remotePoem.authorId));
       return remotePoem;
     }
 
@@ -496,6 +494,11 @@ class ShiJuViewModel extends ChangeNotifier {
       _favoriteIds.remove(poemId);
       nowFavorited = false;
     } else {
+      final Poem? targetPoem = _repository.getPoemById(poemId);
+      if (targetPoem != null && targetPoem.isRemote) {
+        await _repository.registerRemotePoems(<Poem>[targetPoem]);
+        _poems = _repository.getAllPoems();
+      }
       _favoriteIds.insert(0, poemId);
       nowFavorited = true;
     }
@@ -585,7 +588,7 @@ class ShiJuViewModel extends ChangeNotifier {
   Author? getAuthorForPoem(Poem poem) =>
       _repository.getAuthorById(poem.authorId, fallbackPoem: poem);
 
-  /// 获取同一作者收录的全部诗词（按 authorId 与姓名双向聚合）
+  /// 获取同一作者已加载的全部诗词（按 authorId 与姓名双向聚合）
   List<Poem> getAuthorWorks(String authorId, {String? authorName}) =>
       _repository.getPoemsByAuthor(authorId, authorName: authorName);
 
@@ -638,6 +641,67 @@ class ShiJuViewModel extends ChangeNotifier {
       return enriched;
     } finally {
       _isEnrichingPoem = false;
+      notifyListeners();
+    }
+  }
+
+  /// 获取同一作者在诗泉全库中的收录总首数
+  int getAuthorTotalPoemCount(String authorId) =>
+      _repository.getAuthorTotalPoemCount(authorId);
+
+  /// 判断某位作者是否正在从诗泉云端加载作品全集
+  bool isLoadingAuthorPoems(String authorId) =>
+      _loadingAuthorIds.contains(authorId);
+
+  /// 判断某位作者是否还有更多诗泉云端分页尚未加载
+  bool canLoadMoreAuthorPoems(String authorId) =>
+      _repository.canLoadMoreAuthorPoems(authorId);
+
+  /// 自动拉取某位作者在「诗泉 API」中的作品列表与全库收录总首数
+  Future<void> ensureAuthorPoemsLoaded(String authorId) async {
+    if (!_repository.shiquanApiService.enableNetwork) {
+      return;
+    }
+    if (_loadingAuthorIds.contains(authorId) ||
+        _repository.getAuthorLoadedPage(authorId) >= 1) {
+      return;
+    }
+
+    _loadingAuthorIds.add(authorId);
+    notifyListeners();
+
+    try {
+      await _repository.fetchAuthorPoemsFromShiquan(
+        authorId,
+        page: 1,
+        pageSize: 100,
+      );
+    } finally {
+      _loadingAuthorIds.remove(authorId);
+      notifyListeners();
+    }
+  }
+
+  /// 加载某位作者在「诗泉 API」中的下一页诗作
+  Future<void> loadMoreAuthorPoems(String authorId) async {
+    if (!_repository.shiquanApiService.enableNetwork ||
+        _loadingAuthorIds.contains(authorId) ||
+        !_repository.canLoadMoreAuthorPoems(authorId)) {
+      return;
+    }
+
+    final int nextPage = _repository.getAuthorLoadedPage(authorId) + 1;
+    _loadingAuthorIds.add(authorId);
+    notifyListeners();
+
+    try {
+      await _repository.fetchAuthorPoemsFromShiquan(
+        authorId,
+        page: nextPage,
+        pageSize: 100,
+      );
+    } finally {
+      _loadingAuthorIds.remove(authorId);
       notifyListeners();
     }
   }

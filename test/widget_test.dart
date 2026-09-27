@@ -568,6 +568,51 @@ void main() {
             },
           );
         }
+        if (request.url.path == '/api/poems') {
+          final String? authorIdParam = request.url.queryParameters['authorId'];
+          if (authorIdParam == '2045') {
+            return http.Response.bytes(
+              utf8.encode(
+                jsonEncode(<String, dynamic>{
+                  'data': <Map<String, dynamic>>[
+                    <String, dynamic>{
+                      'id': 255080,
+                      'title': '鼓吹曲辞 上之回',
+                      'content': <String>[
+                        '三十六离宫，楼台与天通。',
+                        '阁道步行月，美人愁烟空。',
+                      ],
+                      'author': <String, dynamic>{'id': 2045, 'name': '李白'},
+                      'dynasty': <String, dynamic>{'id': 6, 'name': '唐'},
+                      'type': <String, dynamic>{'id': 17, 'name': '乐府诗'},
+                    },
+                    <String, dynamic>{
+                      'id': 255100,
+                      'title': '鼓吹曲辞 将进酒',
+                      'content': <String>[
+                        '君不见黄河之水天上来，奔流到海不复回。',
+                        '天生我材必有用，千金散尽还复来。',
+                      ],
+                      'author': <String, dynamic>{'id': 2045, 'name': '李白'},
+                      'dynasty': <String, dynamic>{'id': 6, 'name': '唐'},
+                      'type': <String, dynamic>{'id': 17, 'name': '乐府诗'},
+                    },
+                  ],
+                  'pagination': <String, dynamic>{
+                    'page': 1,
+                    'pageSize': 100,
+                    'hasMore': true,
+                  },
+                  'lang': 'zh-Hans',
+                }),
+              ),
+              200,
+              headers: const <String, String>{
+                'content-type': 'application/json; charset=utf-8',
+              },
+            );
+          }
+        }
         return http.Response('Not Found', 404);
       });
 
@@ -591,8 +636,10 @@ void main() {
       expect(viewModel.currentPoem.id, 'shiquan_310281');
       expect(viewModel.currentPoem.title, '送族弟单父主簿凝');
       expect(viewModel.currentPoem.isRemote, isTrue);
-      // 自动关联至内置名家李白 (li_bai)
+      // 自动关联至内置名家李白 (li_bai)，并自动拉取李白在诗泉全库中的收录总数（1863 首）与作品列表
       expect(viewModel.currentPoem.authorId, 'li_bai');
+      expect(viewModel.getAuthorTotalPoemCount('li_bai'), 1863);
+      expect(viewModel.getAuthorWorks('li_bai').length, greaterThanOrEqualTo(5));
       expect(find.text('诗泉云卷'), findsOneWidget);
 
       // 2. 切换至「寻章摘句」探索页，输入本地不存在的关键词并点击「诗泉全库检索」
@@ -615,7 +662,59 @@ void main() {
       expect(searchedPoem.title, '与充维那');
       expect(searchedPoem.authorName, '释正觉');
 
-      // 3. 验证诗泉云端诗词已持久化落盘至 LocalStorageService，重启 ViewModel 后仍可直接读取与生成诗人小传
+      // 3. 验证诗泉云端诗词已生成完整逐句白话今译与字词典故注释（而非旧版导读模板）
+      expect(searchedPoem.translation, isNot(startsWith('本篇为')));
+      expect(searchedPoem.translation, contains('在皎洁的明月清辉中观照自我真性'));
+      expect(
+        searchedPoem.annotations.any((PoemAnnotation a) => a.term == '机梭'),
+        isTrue,
+      );
+
+      // 4. 验证沈辽《读书》及旧缓存模板译文在加载时自动升级为完整逐句白话今译
+      final Poem shenLiaoLegacy = Poem(
+        id: 'shiquan_189510',
+        featuredQuote: '读书十车老已忘，人生得意须少壮。',
+        title: '读书',
+        dynasty: '唐',
+        authorId: 'shiquan_author_7372',
+        authorName: '沈辽',
+        paragraphs: const <String>[
+          '读书十车老已忘，人生得意须少壮。',
+          '白髪渐多筋力衰，谁为流年更惆怅。',
+          '自寄蛮夷朋旧稀，更将黄卷卧斜晖。',
+          '古来枉直何足道，昨日皦皦今还非。',
+        ],
+        tags: const <String>['哲理', '旷达'],
+        paletteType: PaletteType.songHuaHuang,
+        isRemote: true,
+        genre: '七言律诗',
+        translation:
+            '本篇为唐代诗人沈辽所作《读书》（体裁：七言律诗，共 4 联/句）。诗中以「读书十车老已忘，人生得意须少壮。」为核心意象展开，通过凝练隽永的古典笔触，将眼前风物与胸中情怀融为一炉。',
+        annotations: const <PoemAnnotation>[
+          PoemAnnotation(
+            term: '体裁 · 七言律诗',
+            explanation: '旧版通用体裁说明',
+          ),
+        ],
+        background: '《读书》系唐代沈辽传世之作。',
+        appreciation: '细品沈辽这首《读书》。',
+      );
+      final Poem upgradedShenLiao =
+          ShiquanApiService.upgradeRemotePoemIfNeeded(shenLiaoLegacy);
+      expect(upgradedShenLiao.translation, isNot(startsWith('本篇为')));
+      expect(upgradedShenLiao.translation, contains('昔日纵使饱读十车诗书'));
+      expect(upgradedShenLiao.translation, contains('更捧着一卷古籍书册，闲卧在傍晚的夕阳余晖之中'));
+      expect(
+        upgradedShenLiao.annotations
+            .any((PoemAnnotation a) => a.term == '读书十车'),
+        isTrue,
+      );
+      expect(
+        upgradedShenLiao.annotations.any((PoemAnnotation a) => a.term == '黄卷'),
+        isTrue,
+      );
+
+      // 5. 验证诗泉云端诗词已持久化落盘至 LocalStorageService，重启 ViewModel 后仍可直接读取与生成诗人小传
       final ShiJuViewModel rebootedVm = _createTestViewModel(driver: driver);
       await rebootedVm.initialize();
       expect(rebootedVm.cachedRemotePoemCount, 2);
