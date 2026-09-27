@@ -12,7 +12,6 @@ import 'auth/widgets/wechat_qr_code_widget.dart';
 import 'collection/views/collection_view.dart';
 import 'explore/views/explore_view.dart';
 import 'home/views/home_view.dart';
-import 'pipeline/views/jenkins_pipeline_view.dart';
 import 'shiju_view_model.dart';
 import 'update/views/app_update_dialog.dart';
 
@@ -155,10 +154,6 @@ class _ShiJuAppShellState extends State<ShiJuAppShell>
                               key: const ValueKey<String>('nav_collection'),
                               viewModel: widget.viewModel,
                             ),
-                          ShiJuNavTab.pipeline => JenkinsPipelineView(
-                              key: const ValueKey<String>('nav_pipeline'),
-                              viewModel: widget.viewModel,
-                            ),
                         },
                       ),
                     ),
@@ -288,15 +283,6 @@ class _ShiJuAppShellState extends State<ShiJuAppShell>
                     palette: palette,
                     onTap: () =>
                         widget.viewModel.setActiveTab(ShiJuNavTab.collection),
-                  ),
-                  SizedBox(width: isCompactMobile ? 8 : 18),
-                  _buildMinimalNavTab(
-                    key: const Key('nav_tab_pipeline'),
-                    label: '流水线',
-                    isSelected: activeTab == ShiJuNavTab.pipeline,
-                    palette: palette,
-                    onTap: () =>
-                        widget.viewModel.setActiveTab(ShiJuNavTab.pipeline),
                   ),
                 ],
               );
