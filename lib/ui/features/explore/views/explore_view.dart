@@ -68,11 +68,13 @@ class _ExploreViewState extends State<ExploreView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    // 实时搜索框
+                    // 实时搜索框（回车可直接触发「诗泉 37 万首云库」全文检索）
                     TextField(
                       key: const Key('explore_search_input'),
                       controller: _searchController,
                       onChanged: widget.viewModel.setSearchQuery,
+                      onSubmitted: (_) =>
+                          widget.viewModel.searchShiquanOnline(),
                       style: AppTypography.prose(
                         palette.inkText,
                         fontSize: 15,
@@ -185,44 +187,150 @@ class _ExploreViewState extends State<ExploreView> {
                 ),
               ),
 
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
 
-              // 2. 检索结果计数与重置栏
+              // 2. 检索结果计数、诗泉 37 万首云库检索与重置栏
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                child: Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 10,
+                  runSpacing: 6,
                   children: <Widget>[
-                    Text(
-                      '共寻得 ${results.length} 首佳作',
-                      style: AppTypography.label(
-                        palette.mutedText,
-                        fontSize: 12.5,
-                      ),
-                    ),
-                    if (widget.viewModel.searchQuery.isNotEmpty ||
-                        widget.viewModel.selectedTag != '全部')
-                      TextButton.icon(
-                        onPressed: () {
-                          _searchController.clear();
-                          widget.viewModel.resetExploreFilters();
-                        },
-                        style: TextButton.styleFrom(
-                          foregroundColor: palette.cinnabarRed,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Text(
+                          '共寻得 ${results.length} 首佳作',
+                          style: AppTypography.label(
+                            palette.mutedText,
+                            fontSize: 12.5,
                           ),
                         ),
-                        icon: const Icon(Icons.refresh_rounded, size: 14),
-                        label: Text(
-                          '重置筛选',
+                        const SizedBox(width: 8),
+                        Text(
+                          '· 诗泉云库 ${(widget.viewModel.shiquanStats.poems / 10000).toStringAsFixed(1)}万首',
                           style: AppTypography.label(
-                            palette.cinnabarRed,
+                            palette.themeAccent,
                             fontSize: 12,
                           ),
                         ),
-                      ),
+                      ],
+                    ),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: <Widget>[
+                        if (widget.viewModel.searchQuery.trim().isNotEmpty)
+                          TextButton.icon(
+                            key: const Key('explore_shiquan_search_button'),
+                            onPressed: widget.viewModel.isSearchingShiquan
+                                ? null
+                                : () => widget.viewModel.searchShiquanOnline(),
+                            style: TextButton.styleFrom(
+                              foregroundColor: palette.themeAccent,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            icon: widget.viewModel.isSearchingShiquan
+                                ? SizedBox(
+                                    width: 12,
+                                    height: 12,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 1.6,
+                                      color: palette.themeAccent,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.cloud_sync_outlined,
+                                    size: 14,
+                                  ),
+                            label: Text(
+                              widget.viewModel.isSearchingShiquan
+                                  ? '诗泉检索中...'
+                                  : '诗泉全库检索',
+                              style: AppTypography.label(
+                                palette.themeAccent,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          )
+                        else
+                          TextButton.icon(
+                            key: const Key('explore_shiquan_random_button'),
+                            onPressed: widget.viewModel.isFetchingShiquanRandom
+                                ? null
+                                : () async {
+                                    await widget.viewModel
+                                        .fetchRandomFromShiquan();
+                                  },
+                            style: TextButton.styleFrom(
+                              foregroundColor: palette.themeAccent,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            icon: widget.viewModel.isFetchingShiquanRandom
+                                ? SizedBox(
+                                    width: 12,
+                                    height: 12,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 1.6,
+                                      color: palette.themeAccent,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.cloud_download_outlined,
+                                    size: 14,
+                                  ),
+                            label: Text(
+                              widget.viewModel.isFetchingShiquanRandom
+                                  ? '采诗中...'
+                                  : '诗泉随机采诗',
+                              style: AppTypography.label(
+                                palette.themeAccent,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        if (widget.viewModel.searchQuery.isNotEmpty ||
+                            widget.viewModel.selectedTag != '全部')
+                          TextButton.icon(
+                            onPressed: () {
+                              _searchController.clear();
+                              widget.viewModel.resetExploreFilters();
+                            },
+                            style: TextButton.styleFrom(
+                              foregroundColor: palette.cinnabarRed,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            icon: const Icon(Icons.refresh_rounded, size: 14),
+                            label: Text(
+                              '重置筛选',
+                              style: AppTypography.label(
+                                palette.cinnabarRed,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -325,6 +433,18 @@ class _ExploreViewState extends State<ExploreView> {
                             vertical: 1.5,
                           ),
                         ),
+                        if (poem.isRemote) ...<Widget>[
+                          const SizedBox(width: 5),
+                          const CinnabarSeal(
+                            text: '诗泉',
+                            style: SealStyle.yang,
+                            fontSize: 9.5,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 4.5,
+                              vertical: 1,
+                            ),
+                          ),
+                        ],
                         const SizedBox(width: 8),
                         Flexible(
                           child: Text(
@@ -425,6 +545,9 @@ class _ExploreViewState extends State<ExploreView> {
   }
 
   Widget _buildEmptyState(TraditionalPalette palette) {
+    final String currentQuery = widget.viewModel.searchQuery.trim();
+    final bool isSearching = widget.viewModel.isSearchingShiquan;
+
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -436,10 +559,51 @@ class _ExploreViewState extends State<ExploreView> {
           ),
           const SizedBox(height: 14),
           Text(
-            '未寻得匹配的诗词佳句，不妨换个关键词或意境标签一试',
+            '本地善本暂未寻得匹配的诗词佳句，不妨前往「诗泉」云库全量检索',
             textAlign: TextAlign.center,
             style: AppTypography.attribution(palette.mutedText, fontSize: 14),
           ),
+          if (currentQuery.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              key: const Key('empty_state_shiquan_search_button'),
+              onPressed: isSearching
+                  ? null
+                  : () => widget.viewModel.searchShiquanOnline(),
+              style: FilledButton.styleFrom(
+                backgroundColor: palette.themeAccent,
+                foregroundColor: palette.onThemeAccent,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 11,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(6),
+                ),
+              ),
+              icon: isSearching
+                  ? SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 1.8,
+                        color: palette.onThemeAccent,
+                      ),
+                    )
+                  : const Icon(Icons.cloud_sync_outlined, size: 16),
+              label: Text(
+                isSearching
+                    ? '正在检索诗泉 37 万首云库...'
+                    : '在「诗泉 · 37万首云库」中检索「$currentQuery」',
+                style: AppTypography.label(
+                  palette.onThemeAccent,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

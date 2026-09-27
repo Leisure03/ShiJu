@@ -38,7 +38,7 @@ class ShiJuViewModel extends ChangeNotifier {
   final AppUpdateService _updateService;
   final Random _random = Random();
 
-  late final List<Poem> _poems;
+  List<Poem> _poems = <Poem>[];
 
   int _currentIndex = 0;
   bool _isVerticalLayout = true;
@@ -50,6 +50,12 @@ class ShiJuViewModel extends ChangeNotifier {
 
   WeChatUser? _currentUser;
   bool _isSyncingCloud = false;
+
+  // 「诗泉 (poetry.palemoky.com)」37 万首云端古诗词数据库状态
+  bool _isFetchingShiquanRandom = false;
+  bool _isSearchingShiquan = false;
+  ShiquanStats _shiquanStats = const ShiquanStats();
+  List<Poem> _remoteSearchResults = <Poem>[];
 
   // Jenkins 自动更新 (OTA Auto-Update) 核心状态
   String _currentAppVersion = AppUpdateService.kDefaultAppVersion;
@@ -72,6 +78,18 @@ class ShiJuViewModel extends ChangeNotifier {
 
   /// Jenkins 自动更新服务
   AppUpdateService get updateService => _updateService;
+
+  /// 是否正在从「诗泉 API」随机采撷诗词
+  bool get isFetchingShiquanRandom => _isFetchingShiquanRandom;
+
+  /// 是否正在调用「诗泉 API」全文搜索
+  bool get isSearchingShiquan => _isSearchingShiquan;
+
+  /// 「诗泉 API」云端诗库统计数据（默认 371,313 首诗词 · 13,577 位诗人）
+  ShiquanStats get shiquanStats => _shiquanStats;
+
+  /// 本地已缓存的诗泉云端诗词数量
+  int get cachedRemotePoemCount => _repository.cachedRemotePoems.length;
 
   /// 当前客户端已安装版本号（如 1.0.6）
   String get currentAppVersion => _currentAppVersion;
@@ -172,14 +190,32 @@ class ShiJuViewModel extends ChangeNotifier {
   /// 当前选中的意境分类标签
   String get selectedTag => _selectedTag;
 
-  /// 探索页实时过滤后的诗词列表
-  List<Poem> get filteredPoems => _repository.searchPoems(
-        query: _searchQuery,
-        selectedTag: _selectedTag,
-      );
+  /// 探索页实时过滤后的诗词列表（融合本地过滤结果与当前「诗泉 API」在线搜索结果）
+  List<Poem> get filteredPoems {
+    final List<Poem> localMatches = _repository.searchPoems(
+      query: _searchQuery,
+      selectedTag: _selectedTag,
+    );
+    if (_remoteSearchResults.isEmpty || _searchQuery.trim().isEmpty) {
+      return localMatches;
+    }
+    final List<Poem> combined = List<Poem>.of(localMatches);
+    for (final Poem remote in _remoteSearchResults) {
+      final bool matchesTag = _selectedTag.isEmpty ||
+          _selectedTag == '全部' ||
+          remote.tags.contains(_selectedTag);
+      if (matchesTag && !combined.any((Poem p) => p.id == remote.id)) {
+        combined.add(remote);
+      }
+    }
+    return combined;
+  }
 
-  /// 初始化加载持久化数据（收藏列表、阅读历史、横竖排偏好、夜间模式、微信登录状态、客户端版本与 Jenkins 自动更新检测）
+  /// 初始化加载持久化数据（收藏列表、阅读历史、诗泉本地缓存库、横竖排偏好、夜间模式、微信登录状态与 Jenkins 自动更新检测）
   Future<void> initialize() async {
+    await _repository.loadCachedRemotePoems();
+    _poems = _repository.getAllPoems();
+
     final List<String> savedFavorites = await _repository.loadFavoriteIds();
     final List<String> savedHistory = await _repository.loadHistoryIds();
     final bool savedVertical = await _repository.loadIsVerticalLayout();
@@ -226,6 +262,16 @@ class ShiJuViewModel extends ChangeNotifier {
 
     // 异步拉取远端 dist/build-manifest.json 检查是否有 Jenkins 新构建版本
     unawaited(checkForAppUpdate());
+    // 异步刷新诗泉云端统计信息
+    unawaited(_refreshShiquanStats());
+  }
+
+  Future<void> _refreshShiquanStats() async {
+    final ShiquanStats? remoteStats = await _repository.fetchShiquanStats();
+    if (remoteStats != null) {
+      _shiquanStats = remoteStats;
+      notifyListeners();
+    }
   }
 
   /// 完成微信扫码登录，保存雅士档案并合并云端藏书阁收藏
@@ -352,12 +398,74 @@ class ShiJuViewModel extends ChangeNotifier {
 
   /// 选中指定诗词作为当前诗词并记录阅读历史
   Future<void> selectPoem(Poem poem) async {
+    if (poem.isRemote) {
+      await _repository.registerRemotePoems(<Poem>[poem]);
+      _poems = _repository.getAllPoems();
+    }
     final int idx = _poems.indexWhere((Poem p) => p.id == poem.id);
     if (idx != -1) {
       _currentIndex = idx;
     }
     await recordReadingHistory(poem.id, notify: false);
     notifyListeners();
+  }
+
+  /// 从「诗泉 API (poetry.palemoky.com)」37 万首云库中随机采撷一首新诗并切换展示
+  Future<Poem?> fetchRandomFromShiquan({
+    String? author,
+    String? dynasty,
+    String? type,
+    String? char,
+  }) async {
+    if (_isFetchingShiquanRandom) return null;
+    _isFetchingShiquanRandom = true;
+    notifyListeners();
+
+    final Poem? remotePoem = await _repository.fetchRandomFromShiquan(
+      author: author,
+      dynasty: dynasty,
+      type: type,
+      char: char,
+    );
+
+    _isFetchingShiquanRandom = false;
+    if (remotePoem != null) {
+      _poems = _repository.getAllPoems();
+      final int idx = _poems.indexWhere((Poem p) => p.id == remotePoem.id);
+      if (idx != -1) {
+        _currentIndex = idx;
+      }
+      await recordReadingHistory(remotePoem.id, notify: false);
+      notifyListeners();
+      return remotePoem;
+    }
+
+    // 离线或触发频控时优雅降级为本地诗库随机漫游
+    await roamRandomQuote();
+    return null;
+  }
+
+  /// 调用「诗泉 API」云端全库检索并合并至探索页结果列表
+  Future<List<Poem>> searchShiquanOnline({String? customQuery}) async {
+    final String query = (customQuery ?? _searchQuery).trim();
+    if (query.isEmpty) {
+      _remoteSearchResults = <Poem>[];
+      notifyListeners();
+      return const <Poem>[];
+    }
+
+    _isSearchingShiquan = true;
+    notifyListeners();
+
+    final result = await _repository.searchShiquanOnline(query: query);
+    _poems = _repository.getAllPoems();
+    if (query == _searchQuery.trim()) {
+      _remoteSearchResults = result.poems;
+    }
+
+    _isSearchingShiquan = false;
+    notifyListeners();
+    return result.poems;
   }
 
   /// 判断某首诗词是否已收藏
@@ -422,6 +530,9 @@ class ShiJuViewModel extends ChangeNotifier {
   void setSearchQuery(String query) {
     if (_searchQuery == query) return;
     _searchQuery = query;
+    if (query.trim().isEmpty) {
+      _remoteSearchResults = <Poem>[];
+    }
     notifyListeners();
   }
 
@@ -436,6 +547,7 @@ class ShiJuViewModel extends ChangeNotifier {
   void jumpToExploreWithTag(String tag) {
     _selectedTag = tag;
     _searchQuery = '';
+    _remoteSearchResults = <Poem>[];
     _activeTab = ShiJuNavTab.explore;
     notifyListeners();
   }
@@ -444,6 +556,7 @@ class ShiJuViewModel extends ChangeNotifier {
   void resetExploreFilters() {
     _searchQuery = '';
     _selectedTag = '全部';
+    _remoteSearchResults = <Poem>[];
     notifyListeners();
   }
 

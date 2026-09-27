@@ -1,6 +1,7 @@
 import 'dart:convert';
 import '../../domain/models/app_update_model.dart';
 import '../../domain/models/auth_user_model.dart';
+import '../../domain/models/poem_model.dart';
 import 'storage_driver_stub.dart';
 import 'storage_driver_stub.dart'
     if (dart.library.js_interop) 'storage_driver_web.dart'
@@ -23,6 +24,7 @@ class LocalStorageService {
   static const String kIgnoredBuildNumberKey = 'shiju_ignored_build_number';
   static const String kPublishedManifestKey =
       'shiju_published_jenkins_manifest';
+  static const String kCachedShiquanPoemsKey = 'shiju_cached_shiquan_poems';
 
   /// 获取收藏诗词 ID 列表
   Future<List<String>> getFavoriteIds() async {
@@ -173,5 +175,31 @@ class LocalStorageService {
     } else {
       await _driver.setItem(kPublishedManifestKey, jsonEncode(manifest.toJson()));
     }
+  }
+
+  /// 获取本地持久化缓存的「诗泉 API」云端诗词列表
+  Future<List<Poem>> getCachedRemotePoems() async {
+    final String? raw = await _driver.getItem(kCachedShiquanPoemsKey);
+    if (raw == null || raw.trim().isEmpty) {
+      return <Poem>[];
+    }
+    try {
+      final Object? decoded = jsonDecode(raw);
+      if (decoded is List<dynamic>) {
+        return decoded
+            .whereType<Map<String, dynamic>>()
+            .map(Poem.fromJson)
+            .where((Poem p) => p.id.isNotEmpty)
+            .toList();
+      }
+    } catch (_) {}
+    return <Poem>[];
+  }
+
+  /// 保存从「诗泉 API」拉取到的云端诗词至本地持久化缓存
+  Future<void> saveCachedRemotePoems(List<Poem> poems) async {
+    final List<Map<String, dynamic>> serialized =
+        poems.map((Poem p) => p.toJson()).toList();
+    await _driver.setItem(kCachedShiquanPoemsKey, jsonEncode(serialized));
   }
 }

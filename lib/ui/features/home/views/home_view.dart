@@ -96,6 +96,25 @@ class _HomeViewState extends State<HomeView>
     );
   }
 
+  Future<void> _handleFetchShiquanRandom() async {
+    final Poem? fetched = await widget.viewModel.fetchRandomFromShiquan();
+    if (!mounted) return;
+    final Poem active = fetched ?? widget.viewModel.currentPoem;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          fetched != null
+              ? '诗泉涌墨 · 已从 37 万首云库采得〔${active.dynasty}〕${active.authorName}《${active.title}》'
+              : '已漫游至〔${active.dynasty}〕${active.authorName}《${active.title}》',
+          style: AppTypography.label(TraditionalPalette.kXuanPaperWhite),
+        ),
+        backgroundColor: TraditionalPalette.kInkBlack,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final Poem poem = widget.viewModel.currentPoem;
@@ -259,25 +278,38 @@ class _HomeViewState extends State<HomeView>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: <Widget>[
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  const CinnabarSeal(
-                    text: '今日拾句',
-                    style: SealStyle.yang,
-                    fontSize: 11.5,
-                  ),
-                  const SizedBox(width: 8),
-                  CinnabarSeal(
-                    text: poem.dynasty,
-                    style: SealStyle.yin,
-                    fontSize: 11,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 5.5,
-                      vertical: 2,
+              Flexible(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: <Widget>[
+                    const CinnabarSeal(
+                      text: '今日拾句',
+                      style: SealStyle.yang,
+                      fontSize: 11.5,
                     ),
-                  ),
-                ],
+                    CinnabarSeal(
+                      text: poem.dynasty,
+                      style: SealStyle.yin,
+                      fontSize: 11,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5.5,
+                        vertical: 2,
+                      ),
+                    ),
+                    if (poem.isRemote)
+                      const CinnabarSeal(
+                        text: '诗泉云卷',
+                        style: SealStyle.yin,
+                        fontSize: 10.5,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 1.5,
+                        ),
+                      ),
+                  ],
+                ),
               ),
               Row(
                 mainAxisSize: MainAxisSize.min,
@@ -432,10 +464,12 @@ class _HomeViewState extends State<HomeView>
     required bool isVertical,
     required bool isFavorited,
   }) {
+    final bool isFetchingShiquan = widget.viewModel.isFetchingShiquanRandom;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        // 1. 漫游控制栏：上一句 | 偶遇下一句 | 下一句
+        // 1. 漫游控制栏：上一句 | 偶遇下一句 | 诗泉采诗 | 下一句
         Wrap(
           alignment: WrapAlignment.center,
           crossAxisAlignment: WrapCrossAlignment.center,
@@ -473,6 +507,48 @@ class _HomeViewState extends State<HomeView>
                 style: AppTypography.label(
                   palette.onThemeAccent,
                   fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+
+            // 诗泉采诗（实时从 poetry.palemoky.com 37万首云库抽取新诗）
+            OutlinedButton.icon(
+              key: const Key('shiquan_random_button'),
+              onPressed: isFetchingShiquan ? null : _handleFetchShiquanRandom,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: palette.cinnabarRed,
+                backgroundColor: palette.cardSurface.withValues(alpha: 0.72),
+                side: BorderSide(
+                  color: palette.cinnabarRed.withValues(alpha: 0.55),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 15,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(6),
+                ),
+              ),
+              icon: isFetchingShiquan
+                  ? SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 1.8,
+                        color: palette.cinnabarRed,
+                      ),
+                    )
+                  : Icon(
+                      Icons.cloud_download_outlined,
+                      size: 16,
+                      color: palette.cinnabarRed,
+                    ),
+              label: Text(
+                isFetchingShiquan ? '诗泉采诗中...' : '诗泉采诗',
+                style: AppTypography.label(
+                  palette.cinnabarRed,
+                  fontSize: 13,
                   fontWeight: FontWeight.w600,
                 ),
               ),

@@ -9,11 +9,52 @@ class PoemAnnotation {
     required this.explanation,
   });
 
+  factory PoemAnnotation.fromJson(Map<String, dynamic> json) {
+    return PoemAnnotation(
+      term: (json['term'] as String?) ?? '',
+      explanation: (json['explanation'] as String?) ?? '',
+    );
+  }
+
   /// 注释词条（如「青草湖」「星河」）
   final String term;
 
   /// 释义说明
   final String explanation;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'term': term,
+        'explanation': explanation,
+      };
+}
+
+/// 「诗泉 (poetry.palemoky.com)」云端数据库统计信息模型
+@immutable
+class ShiquanStats {
+  const ShiquanStats({
+    this.poems = 371313,
+    this.authors = 13577,
+    this.dynasties = 11,
+    this.types = 17,
+  });
+
+  factory ShiquanStats.fromJson(Map<String, dynamic> json) {
+    final Map<String, dynamic> data =
+        (json['data'] is Map<String, dynamic>)
+            ? json['data'] as Map<String, dynamic>
+            : json;
+    return ShiquanStats(
+      poems: (data['poems'] as num?)?.toInt() ?? 371313,
+      authors: (data['authors'] as num?)?.toInt() ?? 13577,
+      dynasties: (data['dynasties'] as num?)?.toInt() ?? 11,
+      types: (data['types'] as num?)?.toInt() ?? 17,
+    );
+  }
+
+  final int poems;
+  final int authors;
+  final int dynasties;
+  final int types;
 }
 
 /// 诗人生平小传模型
@@ -59,7 +100,45 @@ class Poem {
     required this.annotations,
     required this.background,
     required this.appreciation,
+    this.isRemote = false,
+    this.genre,
   });
+
+  factory Poem.fromJson(Map<String, dynamic> json) {
+    final String paletteName =
+        (json['paletteType'] as String?) ?? PaletteType.xuanPaper.name;
+    final PaletteType resolvedPalette = PaletteType.values.firstWhere(
+      (PaletteType e) => e.name == paletteName,
+      orElse: () => PaletteType.xuanPaper,
+    );
+    final List<dynamic> rawParagraphs =
+        (json['paragraphs'] as List<dynamic>?) ?? const <dynamic>[];
+    final List<dynamic> rawTags =
+        (json['tags'] as List<dynamic>?) ?? const <dynamic>[];
+    final List<dynamic> rawAnnotations =
+        (json['annotations'] as List<dynamic>?) ?? const <dynamic>[];
+
+    return Poem(
+      id: (json['id'] as String?) ?? '',
+      featuredQuote: (json['featuredQuote'] as String?) ?? '',
+      title: (json['title'] as String?) ?? '无题',
+      dynasty: (json['dynasty'] as String?) ?? '唐',
+      authorId: (json['authorId'] as String?) ?? 'unknown',
+      authorName: (json['authorName'] as String?) ?? '佚名',
+      paragraphs: rawParagraphs.whereType<String>().toList(),
+      tags: rawTags.whereType<String>().toList(),
+      paletteType: resolvedPalette,
+      translation: (json['translation'] as String?) ?? '',
+      annotations: rawAnnotations
+          .whereType<Map<String, dynamic>>()
+          .map(PoemAnnotation.fromJson)
+          .toList(),
+      background: (json['background'] as String?) ?? '',
+      appreciation: (json['appreciation'] as String?) ?? '',
+      isRemote: (json['isRemote'] as bool?) ?? true,
+      genre: json['genre'] as String?,
+    );
+  }
 
   final String id;
 
@@ -99,8 +178,33 @@ class Poem {
   /// 文学审美鉴赏
   final String appreciation;
 
+  /// 是否来自「诗泉 API」云端诗库
+  final bool isRemote;
+
+  /// 诗词体裁分类（如：五言律诗、七言绝句、宋词）
+  final String? genre;
+
   /// 格式化题跋出处：〔朝代〕作者 ·《诗名》
   String get formattedAttribution => '〔$dynasty〕$authorName ·《$title》';
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'id': id,
+        'featuredQuote': featuredQuote,
+        'title': title,
+        'dynasty': dynasty,
+        'authorId': authorId,
+        'authorName': authorName,
+        'paragraphs': paragraphs,
+        'tags': tags,
+        'paletteType': paletteType.name,
+        'translation': translation,
+        'annotations':
+            annotations.map((PoemAnnotation a) => a.toJson()).toList(),
+        'background': background,
+        'appreciation': appreciation,
+        'isRemote': isRemote,
+        'genre': genre,
+      };
 
   /// 判断完整诗词中的某一行是否属于首页推荐名句，用于详情页朱砂红底纹与下划线高亮
   bool isLineHighlighted(String line) {

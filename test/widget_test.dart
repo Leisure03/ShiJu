@@ -1,12 +1,17 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:shiju/data/repositories/poetry_repository.dart';
 import 'package:shiju/data/services/app_update_service.dart';
 import 'package:shiju/data/services/local_storage_service.dart';
+import 'package:shiju/data/services/shiquan_api_service.dart';
 import 'package:shiju/data/services/storage_driver_stub.dart';
 import 'package:shiju/domain/models/app_update_model.dart';
 import 'package:shiju/domain/models/auth_user_model.dart';
+import 'package:shiju/domain/models/poem_model.dart';
 import 'package:shiju/main.dart';
 import 'package:shiju/ui/core/theme/traditional_palette.dart';
 import 'package:shiju/ui/core/widgets/shichen_greeting_bar.dart';
@@ -28,12 +33,16 @@ class InMemoryStorageDriver implements StorageDriver {
 ShiJuViewModel _createTestViewModel({
   InMemoryStorageDriver? driver,
   AppUpdateService? updateService,
+  ShiquanApiService? shiquanApiService,
 }) {
   final InMemoryStorageDriver storageDriver = driver ?? InMemoryStorageDriver();
   final LocalStorageService storageService =
       LocalStorageService(driver: storageDriver);
-  final PoetryRepository repository =
-      PoetryRepository(storageService: storageService);
+  final PoetryRepository repository = PoetryRepository(
+    storageService: storageService,
+    shiquanApiService:
+        shiquanApiService ?? ShiquanApiService(enableNetwork: false),
+  );
   return ShiJuViewModel(
     repository: repository,
     updateService:
@@ -473,6 +482,146 @@ void main() {
 
       expect(find.byKey(const Key('app_auto_update_dialog')), findsOneWidget);
       expect(find.text('v1.0.8 (#110)'), findsOneWidget);
+    });
+
+    testWidgets('模块七：接入「诗泉 API (poetry.palemoky.com)」随机采诗、全库搜索与本地持久化缓存', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1180, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final InMemoryStorageDriver driver = InMemoryStorageDriver();
+      final MockClient mockHttpClient =
+          MockClient((http.Request request) async {
+        if (request.url.path == '/api/stats') {
+          return http.Response.bytes(
+            utf8.encode(
+              jsonEncode(<String, dynamic>{
+                'data': <String, dynamic>{
+                  'poems': 371313,
+                  'authors': 13577,
+                  'dynasties': 11,
+                  'types': 17,
+                },
+                'lang': 'zh-Hans',
+              }),
+            ),
+            200,
+            headers: const <String, String>{
+              'content-type': 'application/json; charset=utf-8',
+              'x-d1-bookmark': 'bookmark_001',
+            },
+          );
+        }
+        if (request.url.path == '/api/poems/random') {
+          return http.Response.bytes(
+            utf8.encode(
+              jsonEncode(<String, dynamic>{
+                'data': <String, dynamic>{
+                  'id': 310281,
+                  'title': '送族弟单父主簿凝',
+                  'content': <String>[
+                    '吾家青萍剑，操割有余闲。',
+                    '鞍马月桥南，光辉岐路间。',
+                  ],
+                  'author': <String, dynamic>{'id': 2045, 'name': '李白'},
+                  'dynasty': <String, dynamic>{'id': 6, 'name': '唐'},
+                  'type': <String, dynamic>{'id': 13, 'name': '五言律诗'},
+                },
+                'lang': 'zh-Hans',
+              }),
+            ),
+            200,
+            headers: const <String, String>{
+              'content-type': 'application/json; charset=utf-8',
+            },
+          );
+        }
+        if (request.url.path == '/api/search') {
+          return http.Response.bytes(
+            utf8.encode(
+              jsonEncode(<String, dynamic>{
+                'data': <Map<String, dynamic>>[
+                  <String, dynamic>{
+                    'id': 4949,
+                    'title': '与充维那',
+                    'content': <String>[
+                      '机梭未动若为颜，一点虚灵入道环。',
+                      '明月光中窥自己，白云影外到家山。',
+                    ],
+                    'author': <String, dynamic>{'id': 7312, 'name': '释正觉'},
+                    'dynasty': <String, dynamic>{'id': 6, 'name': '唐'},
+                    'type': <String, dynamic>{'id': 14, 'name': '七言律诗'},
+                  },
+                ],
+                'pagination': <String, dynamic>{
+                  'page': 1,
+                  'pageSize': 12,
+                  'hasMore': false,
+                },
+                'lang': 'zh-Hans',
+              }),
+            ),
+            200,
+            headers: const <String, String>{
+              'content-type': 'application/json; charset=utf-8',
+            },
+          );
+        }
+        return http.Response('Not Found', 404);
+      });
+
+      final ShiquanApiService shiquanService = ShiquanApiService(
+        httpClient: mockHttpClient,
+        enableNetwork: true,
+      );
+      final ShiJuViewModel viewModel = _createTestViewModel(
+        driver: driver,
+        shiquanApiService: shiquanService,
+      );
+      await viewModel.initialize();
+
+      await tester.pumpWidget(ShiJuApp(viewModel: viewModel));
+      await tester.pumpAndSettle();
+
+      // 1. 首页点击「诗泉采诗」按钮，从诗泉 API 随机采得李白《送族弟单父主簿凝》并切换展示
+      await tester.tap(find.byKey(const Key('shiquan_random_button')));
+      await tester.pumpAndSettle();
+
+      expect(viewModel.currentPoem.id, 'shiquan_310281');
+      expect(viewModel.currentPoem.title, '送族弟单父主簿凝');
+      expect(viewModel.currentPoem.isRemote, isTrue);
+      // 自动关联至内置名家李白 (li_bai)
+      expect(viewModel.currentPoem.authorId, 'li_bai');
+      expect(find.text('诗泉云卷'), findsOneWidget);
+
+      // 2. 切换至「寻章摘句」探索页，输入本地不存在的关键词并点击「诗泉全库检索」
+      await tester.tap(find.byKey(const Key('nav_tab_explore')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('explore_search_input')),
+        '明月光中窥自己',
+      );
+      await tester.pumpAndSettle();
+      expect(viewModel.filteredPoems, isEmpty);
+
+      await tester.tap(find.byKey(const Key('empty_state_shiquan_search_button')));
+      await tester.pumpAndSettle();
+
+      expect(viewModel.filteredPoems.length, 1);
+      final Poem searchedPoem = viewModel.filteredPoems.first;
+      expect(searchedPoem.id, 'shiquan_4949');
+      expect(searchedPoem.title, '与充维那');
+      expect(searchedPoem.authorName, '释正觉');
+
+      // 3. 验证诗泉云端诗词已持久化落盘至 LocalStorageService，重启 ViewModel 后仍可直接读取与生成诗人小传
+      final ShiJuViewModel rebootedVm = _createTestViewModel(driver: driver);
+      await rebootedVm.initialize();
+      expect(rebootedVm.cachedRemotePoemCount, 2);
+      final Author? dynamicAuthor = rebootedVm.getAuthorForPoem(searchedPoem);
+      expect(dynamicAuthor, isNotNull);
+      expect(dynamicAuthor!.name, '释正觉');
     });
   });
 }
