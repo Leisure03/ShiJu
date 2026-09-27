@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../../../data/services/shiquan_api_service.dart';
 import '../../../../domain/models/poem_model.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/theme/traditional_palette.dart';
@@ -86,7 +87,9 @@ class _PoemDetailViewState extends State<PoemDetailView> {
   @override
   void initState() {
     super.initState();
-    _activePoem = widget.initialPoem;
+    _activePoem = ShiquanApiService.upgradeRemotePoemIfNeeded(
+      widget.initialPoem,
+    );
   }
 
   @override
@@ -97,10 +100,11 @@ class _PoemDetailViewState extends State<PoemDetailView> {
 
   void _switchPoemInDetail(Poem newPoem) {
     if (_activePoem.id == newPoem.id) return;
+    final Poem upgraded = ShiquanApiService.upgradeRemotePoemIfNeeded(newPoem);
     setState(() {
-      _activePoem = newPoem;
+      _activePoem = upgraded;
     });
-    widget.viewModel.selectPoem(newPoem);
+    widget.viewModel.selectPoem(upgraded);
     if (_scrollController.hasClients) {
       _scrollController.animateTo(
         0,
@@ -134,6 +138,7 @@ class _PoemDetailViewState extends State<PoemDetailView> {
 
   @override
   Widget build(BuildContext context) {
+    _activePoem = ShiquanApiService.upgradeRemotePoemIfNeeded(_activePoem);
     return ListenableBuilder(
       listenable: widget.viewModel,
       builder: (BuildContext context, _) {

@@ -615,7 +615,59 @@ void main() {
       expect(searchedPoem.title, '与充维那');
       expect(searchedPoem.authorName, '释正觉');
 
-      // 3. 验证诗泉云端诗词已持久化落盘至 LocalStorageService，重启 ViewModel 后仍可直接读取与生成诗人小传
+      // 3. 验证诗泉云端诗词已生成完整逐句白话今译与字词典故注释（而非旧版导读模板）
+      expect(searchedPoem.translation, isNot(startsWith('本篇为')));
+      expect(searchedPoem.translation, contains('在皎洁的明月清辉中观照自我真性'));
+      expect(
+        searchedPoem.annotations.any((PoemAnnotation a) => a.term == '机梭'),
+        isTrue,
+      );
+
+      // 4. 验证沈辽《读书》及旧缓存模板译文在加载时自动升级为完整逐句白话今译
+      final Poem shenLiaoLegacy = Poem(
+        id: 'shiquan_189510',
+        featuredQuote: '读书十车老已忘，人生得意须少壮。',
+        title: '读书',
+        dynasty: '唐',
+        authorId: 'shiquan_author_7372',
+        authorName: '沈辽',
+        paragraphs: const <String>[
+          '读书十车老已忘，人生得意须少壮。',
+          '白髪渐多筋力衰，谁为流年更惆怅。',
+          '自寄蛮夷朋旧稀，更将黄卷卧斜晖。',
+          '古来枉直何足道，昨日皦皦今还非。',
+        ],
+        tags: const <String>['哲理', '旷达'],
+        paletteType: PaletteType.songHuaHuang,
+        isRemote: true,
+        genre: '七言律诗',
+        translation:
+            '本篇为唐代诗人沈辽所作《读书》（体裁：七言律诗，共 4 联/句）。诗中以「读书十车老已忘，人生得意须少壮。」为核心意象展开，通过凝练隽永的古典笔触，将眼前风物与胸中情怀融为一炉。',
+        annotations: const <PoemAnnotation>[
+          PoemAnnotation(
+            term: '体裁 · 七言律诗',
+            explanation: '旧版通用体裁说明',
+          ),
+        ],
+        background: '《读书》系唐代沈辽传世之作。',
+        appreciation: '细品沈辽这首《读书》。',
+      );
+      final Poem upgradedShenLiao =
+          ShiquanApiService.upgradeRemotePoemIfNeeded(shenLiaoLegacy);
+      expect(upgradedShenLiao.translation, isNot(startsWith('本篇为')));
+      expect(upgradedShenLiao.translation, contains('昔日纵使饱读十车诗书'));
+      expect(upgradedShenLiao.translation, contains('更捧着一卷古籍书册，闲卧在傍晚的夕阳余晖之中'));
+      expect(
+        upgradedShenLiao.annotations
+            .any((PoemAnnotation a) => a.term == '读书十车'),
+        isTrue,
+      );
+      expect(
+        upgradedShenLiao.annotations.any((PoemAnnotation a) => a.term == '黄卷'),
+        isTrue,
+      );
+
+      // 5. 验证诗泉云端诗词已持久化落盘至 LocalStorageService，重启 ViewModel 后仍可直接读取与生成诗人小传
       final ShiJuViewModel rebootedVm = _createTestViewModel(driver: driver);
       await rebootedVm.initialize();
       expect(rebootedVm.cachedRemotePoemCount, 2);

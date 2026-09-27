@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../../domain/models/poem_model.dart';
 import '../../ui/core/theme/traditional_palette.dart';
+import 'classical_poem_translator.dart';
 import 'curated_poetry_data.dart';
 
 /// 诗泉搜索分页结果封装
@@ -351,8 +352,6 @@ class ShiquanApiService {
       title: title,
     );
 
-    final String fullText = paragraphs.join('');
-
     return Poem(
       id: poemId,
       featuredQuote: featuredQuote,
@@ -378,7 +377,7 @@ class ShiquanApiService {
         dynasty: dynasty,
         authorName: authorName,
         genre: genre,
-        fullText: fullText,
+        paragraphs: paragraphs,
       ),
       background: _generateBackground(
         title: title,
@@ -394,6 +393,71 @@ class ShiquanApiService {
         genre: genre,
         featuredQuote: featuredQuote,
         tags: tags,
+        lineCount: paragraphs.length,
+      ),
+    );
+  }
+
+  /// 对已缓存的云端诗词检查是否仍使用旧版导读模板译文或通用体裁注释，若是则自动升级为完整逐句白话今译与字词典故注释
+  static Poem upgradeRemotePoemIfNeeded(Poem poem) {
+    if (!poem.isRemote) {
+      return poem;
+    }
+
+    final bool needsTranslationUpgrade =
+        ClassicalPoemTranslator.isLegacyTemplateTranslation(poem.translation);
+    final bool needsAnnotationUpgrade = poem.annotations.isEmpty ||
+        poem.annotations.first.term.startsWith('体裁 · ');
+
+    if (!needsTranslationUpgrade && !needsAnnotationUpgrade) {
+      return poem;
+    }
+
+    final String resolvedGenre =
+        (poem.genre != null && poem.genre!.trim().isNotEmpty)
+            ? poem.genre!.trim()
+            : '${poem.dynasty}诗';
+
+    return Poem(
+      id: poem.id,
+      featuredQuote: poem.featuredQuote,
+      title: poem.title,
+      dynasty: poem.dynasty,
+      authorId: poem.authorId,
+      authorName: poem.authorName,
+      paragraphs: poem.paragraphs,
+      tags: poem.tags,
+      paletteType: poem.paletteType,
+      isRemote: poem.isRemote,
+      genre: resolvedGenre,
+      translation: needsTranslationUpgrade
+          ? _generatePoeticTranslation(
+              title: poem.title,
+              dynasty: poem.dynasty,
+              authorName: poem.authorName,
+              genre: resolvedGenre,
+              featuredQuote: poem.featuredQuote,
+              paragraphs: poem.paragraphs,
+            )
+          : poem.translation,
+      annotations: needsAnnotationUpgrade
+          ? _generateAnnotations(
+              title: poem.title,
+              dynasty: poem.dynasty,
+              authorName: poem.authorName,
+              genre: resolvedGenre,
+              paragraphs: poem.paragraphs,
+            )
+          : poem.annotations,
+      background: poem.background,
+      appreciation: _generateAppreciation(
+        title: poem.title,
+        dynasty: poem.dynasty,
+        authorName: poem.authorName,
+        genre: resolvedGenre,
+        featuredQuote: poem.featuredQuote,
+        tags: poem.tags,
+        lineCount: poem.paragraphs.length,
       ),
     );
   }
@@ -510,10 +574,12 @@ class ShiquanApiService {
     required String featuredQuote,
     required List<String> paragraphs,
   }) {
-    final int lineCount = paragraphs.length;
-    return '本篇为$dynasty代诗人$authorName所作《$title》（体裁：$genre，共 $lineCount 联/句）。'
-        '诗中以「$featuredQuote」为核心意象展开，通过凝练隽永的古典笔触，将眼前风物与胸中情怀融为一炉。'
-        '全篇由景入情、语淡而味永，在平仄回环的声律之间，勾勒出清雅深远的东方诗学画卷。';
+    return ClassicalPoemTranslator.translatePoem(
+      paragraphs: paragraphs,
+      title: title,
+      dynasty: dynasty,
+      authorName: authorName,
+    );
   }
 
   static List<PoemAnnotation> _generateAnnotations({
@@ -521,42 +587,15 @@ class ShiquanApiService {
     required String dynasty,
     required String authorName,
     required String genre,
-    required String fullText,
+    required List<String> paragraphs,
   }) {
-    final List<PoemAnnotation> notes = <PoemAnnotation>[
-      PoemAnnotation(
-        term: '体裁 · $genre',
-        explanation: '本篇收录于「诗泉」古典诗词库，属$dynasty代「$genre」体裁，讲求声律谐婉、意脉连贯。',
-      ),
-      PoemAnnotation(
-        term: '题解 ·《$title》',
-        explanation: '$authorName借此题寄寓兴怀，或纪行游历，或感物吟志，展现$dynasty代文人的精神风貌。',
-      ),
-    ];
-
-    if (fullText.contains('月')) {
-      notes.add(
-        const PoemAnnotation(
-          term: '明月意象',
-          explanation: '古典诗词中常以明月寄托高洁志趣、天地永恒之思或千里怀远之情。',
-        ),
-      );
-    } else if (fullText.contains('山') || fullText.contains('水')) {
-      notes.add(
-        const PoemAnnotation(
-          term: '山水林泉',
-          explanation: '以自然山水之清幽澄明映照诗人内心之超然物外，体现“仁者乐山，智者乐水”的审美观照。',
-        ),
-      );
-    } else {
-      notes.add(
-        const PoemAnnotation(
-          term: '诗泉典藏',
-          explanation: '数据源自开源古籍工程 chinese-poetry 与诗泉（poetry.palemoky.com）云端数字善本库。',
-        ),
-      );
-    }
-    return notes;
+    return ClassicalPoemTranslator.generateAnnotations(
+      title: title,
+      dynasty: dynasty,
+      authorName: authorName,
+      genre: genre,
+      paragraphs: paragraphs,
+    );
   }
 
   static String _generateBackground({
@@ -580,10 +619,13 @@ class ShiquanApiService {
     required String genre,
     required String featuredQuote,
     required List<String> tags,
+    int? lineCount,
   }) {
     final String tagDesc = tags.map((String t) => '「#$t」').join('、');
-    return '细品$authorName这首《$title》，全篇兼具$tagDesc之东方美学气韵。'
-        '尤以「$featuredQuote」一联最为传神：字句洗练而意象饱满，起承转合间既有古典格律的端严法度，'
-        '又留有水墨画般的空灵留白，令读者在吟咏之际得以跨越千年时空，与古人共赏天地清欢。';
+    final String structureDesc =
+        lineCount != null && lineCount > 0 ? '（体裁：$genre，共 $lineCount 联/句）' : '';
+    return '细品$dynasty代诗人$authorName这首《$title》$structureDesc，全篇兼具$tagDesc之东方美学气韵。'
+        '尤以「$featuredQuote」一联最为传神：字句洗练而意象饱满，将眼前风物与胸中情怀融为一炉；'
+        '起承转合间既有古典格律的端严法度，又留有水墨画般的空灵留白，令读者在吟咏之际得以跨越千年时空，与古人共赏天地清欢。';
   }
 }

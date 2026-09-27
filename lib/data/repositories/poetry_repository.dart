@@ -119,16 +119,25 @@ class PoetryRepository {
     }).toList();
   }
 
-  /// 初始化加载本地缓存的「诗泉 API」诗词
+  /// 初始化加载本地缓存的「诗泉 API」诗词（若旧缓存仍为导读模板译文则自动升级为完整逐句白话今译）
   Future<List<Poem>> loadCachedRemotePoems() async {
     final List<Poem> saved = await _storageService.getCachedRemotePoems();
     _remotePoems.clear();
+    bool upgradedAny = false;
     for (final Poem poem in saved) {
       final bool inCurated =
           CuratedPoetryData.poems.any((Poem c) => c.id == poem.id);
       if (!inCurated && !_remotePoems.any((Poem r) => r.id == poem.id)) {
-        _remotePoems.add(poem);
+        final Poem upgraded = ShiquanApiService.upgradeRemotePoemIfNeeded(poem);
+        if (upgraded.translation != poem.translation ||
+            upgraded.annotations.length != poem.annotations.length) {
+          upgradedAny = true;
+        }
+        _remotePoems.add(upgraded);
       }
+    }
+    if (upgradedAny) {
+      await _storageService.saveCachedRemotePoems(_remotePoems);
     }
     return List<Poem>.unmodifiable(_remotePoems);
   }
@@ -139,7 +148,8 @@ class PoetryRepository {
     bool persist = true,
   }) async {
     bool changed = false;
-    for (final Poem poem in poems) {
+    for (final Poem rawPoem in poems) {
+      final Poem poem = ShiquanApiService.upgradeRemotePoemIfNeeded(rawPoem);
       final bool inCurated =
           CuratedPoetryData.poems.any((Poem c) => c.id == poem.id);
       if (inCurated) {
@@ -149,6 +159,9 @@ class PoetryRepository {
           _remotePoems.indexWhere((Poem r) => r.id == poem.id);
       if (existingIdx == -1) {
         _remotePoems.add(poem);
+        changed = true;
+      } else if (_remotePoems[existingIdx].translation != poem.translation) {
+        _remotePoems[existingIdx] = poem;
         changed = true;
       }
     }
