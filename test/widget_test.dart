@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shiju/data/repositories/poetry_repository.dart';
+import 'package:shiju/data/services/app_update_service.dart';
 import 'package:shiju/data/services/local_storage_service.dart';
 import 'package:shiju/data/services/storage_driver_stub.dart';
+import 'package:shiju/domain/models/app_update_model.dart';
 import 'package:shiju/domain/models/auth_user_model.dart';
 import 'package:shiju/main.dart';
 import 'package:shiju/ui/core/theme/traditional_palette.dart';
@@ -23,13 +25,20 @@ class InMemoryStorageDriver implements StorageDriver {
   }
 }
 
-ShiJuViewModel _createTestViewModel({InMemoryStorageDriver? driver}) {
+ShiJuViewModel _createTestViewModel({
+  InMemoryStorageDriver? driver,
+  AppUpdateService? updateService,
+}) {
   final InMemoryStorageDriver storageDriver = driver ?? InMemoryStorageDriver();
   final LocalStorageService storageService =
       LocalStorageService(driver: storageDriver);
   final PoetryRepository repository =
       PoetryRepository(storageService: storageService);
-  return ShiJuViewModel(repository: repository);
+  return ShiJuViewModel(
+    repository: repository,
+    updateService:
+        updateService ?? AppUpdateService(enableNetworkProbe: false),
+  );
 }
 
 void main() {
@@ -406,6 +415,64 @@ void main() {
       expect(find.byKey(const Key('nav_tab_collection')), findsOneWidget);
       expect(find.byKey(const Key('nav_tab_pipeline')), findsNothing);
       expect(find.text('流水线'), findsNothing);
+    });
+
+    testWidgets('模块六：Jenkins 打包发布新构建清单后，客户端再次进入自动弹出更新提示并完成一键升级', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1180, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final InMemoryStorageDriver driver = InMemoryStorageDriver();
+      // 模拟 Jenkins 刚刚打包生成了 #109 构建清单 (v1.0.7+109)
+      final AppReleaseManifest remoteBuild109 =
+          AppUpdateService.createManifestForBuild(
+        buildNumber: 109,
+        gitBranch: 'jenkins_auto_update',
+        gitCommit: '82c6df6',
+      );
+      final AppUpdateService mockUpdateService = AppUpdateService(
+        enableNetworkProbe: false,
+        customFetcher: () async => remoteBuild109,
+      );
+
+      final ShiJuViewModel viewModel = _createTestViewModel(
+        driver: driver,
+        updateService: mockUpdateService,
+      );
+      expect(viewModel.currentBuildNumber, 108);
+
+      // 用户打开软件（initialize 自动拉取 build-manifest.json 并比对版本）
+      await viewModel.initialize();
+      await tester.pumpWidget(ShiJuApp(viewModel: viewModel));
+      await tester.pumpAndSettle();
+
+      // 1. 验证进入软件后自动弹出「发现新版本 · 拾句 (ShiJu)」对话框
+      expect(find.byKey(const Key('app_auto_update_dialog')), findsOneWidget);
+      expect(find.text('发现新版本 · 拾句 (ShiJu)'), findsOneWidget);
+      expect(find.text('v1.0.7 (#109)'), findsOneWidget);
+
+      // 2. 点击「立即更新」，验证自动完成下载、SHA-256 校验并升级至 #109
+      await tester.tap(find.byKey(const Key('confirm_app_update_button')));
+      await tester.pumpAndSettle();
+
+      expect(viewModel.currentBuildNumber, 109);
+      expect(viewModel.currentAppVersion, '1.0.7');
+      expect(viewModel.hasAppUpdate, isFalse);
+      expect(find.byKey(const Key('app_auto_update_dialog')), findsNothing);
+
+      // 3. 模拟 Jenkins 再次打包生成 #110，用户手里的软件切回前台 (resumed) 时自动弹出 #110 更新窗
+      final AppReleaseManifest remoteBuild110 =
+          AppUpdateService.createManifestForBuild(buildNumber: 110);
+      await viewModel.publishJenkinsBuildManifest(
+        remoteBuild110,
+        autoPopup: false,
+      );
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('app_auto_update_dialog')), findsOneWidget);
+      expect(find.text('v1.0.8 (#110)'), findsOneWidget);
     });
   });
 }

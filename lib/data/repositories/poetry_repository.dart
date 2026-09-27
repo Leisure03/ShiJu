@@ -1,3 +1,4 @@
+import '../../domain/models/app_update_model.dart';
 import '../../domain/models/auth_user_model.dart';
 import '../../domain/models/poem_model.dart';
 import '../services/curated_poetry_data.dart';
@@ -102,4 +103,28 @@ class PoetryRepository {
 
   Future<void> saveAuthUser(WeChatUser? user) =>
       _storageService.saveAuthUser(user);
+
+  Future<String?> loadInstalledVersion() =>
+      _storageService.getInstalledVersion();
+
+  Future<void> saveInstalledVersion(String version) =>
+      _storageService.saveInstalledVersion(version);
+
+  Future<int?> loadInstalledBuildNumber() =>
+      _storageService.getInstalledBuildNumber();
+
+  Future<void> saveInstalledBuildNumber(int buildNumber) =>
+      _storageService.saveInstalledBuildNumber(buildNumber);
+
+  Future<int?> loadIgnoredBuildNumber() =>
+      _storageService.getIgnoredBuildNumber();
+
+  Future<void> saveIgnoredBuildNumber(int? buildNumber) =>
+      _storageService.saveIgnoredBuildNumber(buildNumber);
+
+  Future<AppReleaseManifest?> loadPublishedManifest() =>
+      _storageService.getPublishedManifest();
+
+  Future<void> savePublishedManifest(AppReleaseManifest? manifest) =>
+      _storageService.savePublishedManifest(manifest);
 }
