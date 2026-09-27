@@ -22,11 +22,30 @@ class ShiquanSearchResult {
   final bool hasMore;
 }
 
+/// 诗泉指定作者作品列表与全库收录总数结果封装
+@immutable
+class ShiquanAuthorPoemsResult {
+  const ShiquanAuthorPoemsResult({
+    required this.poems,
+    required this.totalCount,
+    this.page = 1,
+    this.pageSize = 100,
+    this.hasMore = false,
+  });
+
+  final List<Poem> poems;
+  final int totalCount;
+  final int page;
+  final int pageSize;
+  final bool hasMore;
+}
+
 /// 「诗泉（https://poetry.palemoky.com）」开源古诗词 API 客户端服务
 ///
 /// 收录唐诗、宋词、元曲、诗经、楚辞等 37 万余首古典诗词、1.3 万余位诗人。
 /// 支持：
 /// - `/api/poems/random`：随机推荐诗词（支持按作者、朝代、体裁、飞花令单字筛选）
+/// - `/api/poems?authorId=...`：分页获取指定诗人的全部收录诗作与总数
 /// - `/api/search`：全文搜索诗词（支持分页）
 /// - `/api/stats`：获取云端诗库统计数据
 class ShiquanApiService {
@@ -51,6 +70,9 @@ class ShiquanApiService {
   /// Cloudflare D1 会话一致性书签（透传 x-d1-bookmark 响应头）
   String? _d1Bookmark;
 
+  /// 作者数字 ID -> 诗泉全库收录诗词总数的内存缓存
+  final Map<int, int> _authorTotalCountCache = <int, int>{};
+
   /// 内置名家姓名到 authorId 的映射表，使诗泉返回的同作者作品自动关联至内置名家小传
   static const Map<String, String> _knownAuthorNameMap = <String, String>{
     '唐温如': 'tang_wenru',
@@ -64,6 +86,48 @@ class ShiquanApiService {
     '王勃': 'wang_bo',
     '纳兰性德': 'nalan_xingde',
   };
+
+  /// 内置名家 authorId 到诗泉云端作者数字 ID (authorId) 的映射表
+  static const Map<String, int> knownAuthorShiquanIdMap = <String, int>{
+    'tang_wenru': 187,
+    'su_shi': 11678,
+    'li_bai': 2045,
+    'wang_wei': 7756,
+    'li_qingzhao': 11433,
+    'xin_qiji': 8618,
+    'zhang_ruoxu': 5839,
+    'wang_bo': 3286,
+    'nalan_xingde': 3074,
+  };
+
+  /// 高产名家在诗泉库中的精确收录总数预置表（避免对上千首作品的名家做多次分页探测）
+  static const Map<int, int> knownAuthorTotalCountByNumericId = <int, int>{
+    187: 1, // 唐温如
+    11678: 3189, // 苏轼
+    2045: 1863, // 李白
+    7756: 640, // 王维
+    11433: 86, // 李清照
+    8618: 786, // 辛弃疾
+    5839: 6, // 张若虚
+    3286: 169, // 王勃
+    3074: 258, // 纳兰性德
+    3911: 2338, // 杜甫
+    9057: 4813, // 白居易
+    7513: 9413, // 陆游
+    4384: 438, // 郑獬
+  };
+
+  /// 从领域层 [authorId] 解析诗泉云端数字作者 ID
+  static int? resolveShiquanAuthorNumericId(String authorId) {
+    if (knownAuthorShiquanIdMap.containsKey(authorId)) {
+      return knownAuthorShiquanIdMap[authorId];
+    }
+    if (authorId.startsWith('shiquan_author_')) {
+      final String suffix = authorId.substring('shiquan_author_'.length);
+      return int.tryParse(suffix);
+    }
+    return null;
+  }
 
   Map<String, String> _buildHeaders() {
     final Map<String, String> headers = <String, String>{
@@ -146,7 +210,226 @@ class ShiquanApiService {
     return null;
   }
 
+  /// 获取某位诗人在「诗泉 API」中收录的诗作分页列表及全库精确总首数（`/api/poems?authorId=...`）
+  Future<ShiquanAuthorPoemsResult?> fetchAuthorPoems({
+    required String authorId,
+    int page = 1,
+    int pageSize = 100,
+    bool resolveExactTotal = true,
+    String lang = 'zh-Hans',
+  }) async {
+    if (!enableNetwork) {
+      return null;
+    }
+    final int? numericId = resolveShiquanAuthorNumericId(authorId);
+    if (numericId == null || numericId <= 0) {
+      return null;
+    }
+
+    final int effectivePageSize = pageSize.clamp(1, 100);
+    final http.Client client = httpClient ?? http.Client();
+    try {
+      final _RawPageFetch pageResult = await _fetchAuthorPoemsRawPage(
+        client: client,
+        authorNumericId: numericId,
+        page: page,
+        pageSize: effectivePageSize,
+        lang: lang,
+      );
+      if (!pageResult.ok) {
+        return null;
+      }
+
+      int totalCount = _authorTotalCountCache[numericId] ??
+          knownAuthorTotalCountByNumericId[numericId] ??
+          0;
+
+      if (!pageResult.hasMore) {
+        // 当前页即为最后一页，可一步精确算出该作者全库收录总数
+        totalCount =
+            (page - 1) * effectivePageSize + pageResult.poems.length;
+        _authorTotalCountCache[numericId] = totalCount;
+      } else if (totalCount <= 0) {
+        if (resolveExactTotal) {
+          totalCount = await _probeExactAuthorTotalCount(
+            client: client,
+            authorNumericId: numericId,
+            firstPageSize: effectivePageSize,
+            lang: lang,
+          );
+          _authorTotalCountCache[numericId] = totalCount;
+        } else {
+          totalCount = page * effectivePageSize + 1;
+        }
+      } else {
+        _authorTotalCountCache[numericId] = totalCount;
+      }
+
+      if (totalCount < pageResult.poems.length) {
+        totalCount = pageResult.poems.length;
+      }
+
+      return ShiquanAuthorPoemsResult(
+        poems: pageResult.poems,
+        totalCount: totalCount,
+        page: page,
+        pageSize: effectivePageSize,
+        hasMore: pageResult.hasMore,
+      );
+    } catch (e) {
+      debugPrint('ShiquanApiService.fetchAuthorPoems error: $e');
+    } finally {
+      if (httpClient == null) {
+        client.close();
+      }
+    }
+    return null;
+  }
+
+  Future<_RawPageFetch> _fetchAuthorPoemsRawPage({
+    required http.Client client,
+    required int authorNumericId,
+    required int page,
+    required int pageSize,
+    required String lang,
+  }) async {
+    final Map<String, String> queryParams = <String, String>{
+      'authorId': authorNumericId.toString(),
+      'page': page.toString(),
+      'pageSize': pageSize.toString(),
+      'lang': lang,
+    };
+    final Uri uri = _buildUri('/api/poems', queryParams);
+    final http.Response response = await client
+        .get(uri, headers: _buildHeaders())
+        .timeout(requestTimeout);
+    _syncBookmark(response);
+
+    if (response.statusCode != 200 || response.bodyBytes.isEmpty) {
+      return const _RawPageFetch(
+        ok: false,
+        poems: <Poem>[],
+        rawCount: 0,
+        hasMore: false,
+      );
+    }
+
+    final String bodyText =
+        utf8.decode(response.bodyBytes, allowMalformed: true);
+    final Object? decoded = jsonDecode(bodyText);
+    if (decoded is! Map<String, dynamic>) {
+      return const _RawPageFetch(
+        ok: false,
+        poems: <Poem>[],
+        rawCount: 0,
+        hasMore: false,
+      );
+    }
+
+    int totalFromPag = 0;
+    bool hasMore = false;
+    if (decoded['pagination'] is Map<String, dynamic>) {
+      final Map<String, dynamic> pag =
+          decoded['pagination'] as Map<String, dynamic>;
+      hasMore = (pag['hasMore'] as bool?) ?? false;
+      final Object? rawTotal = pag['total'] ?? pag['totalCount'];
+      if (rawTotal is num && rawTotal > 0) {
+        totalFromPag = rawTotal.toInt();
+      }
+    }
+    if (totalFromPag > 0) {
+      _authorTotalCountCache[authorNumericId] = totalFromPag;
+    }
+
+    final List<Poem> parsedPoems = <Poem>[];
+    final Object? data = decoded['data'];
+    int rawCount = 0;
+    if (data is List<dynamic>) {
+      rawCount = data.length;
+      for (final Object? item in data) {
+        if (item is Map<String, dynamic>) {
+          parsedPoems.add(mapShiquanJsonToPoem(item));
+        }
+      }
+    }
+
+    return _RawPageFetch(
+      ok: true,
+      poems: parsedPoems,
+      rawCount: rawCount,
+      hasMore: hasMore,
+    );
+  }
+
+  /// 当第一页（pageSize=100）仍有后续页时，通过倍增 + 二分探测最后一页，
+  /// 精确计算出该作者在诗泉全库中的总诗词数：(lastPage - 1) * 100 + lastPageCount
+  Future<int> _probeExactAuthorTotalCount({
+    required http.Client client,
+    required int authorNumericId,
+    required int firstPageSize,
+    required String lang,
+  }) async {
+    int low = 1;
+    int high = 2;
+    const int maxProbePage = 32;
+
+    // 1. 倍增寻找上界
+    while (high <= maxProbePage) {
+      final _RawPageFetch probe = await _fetchAuthorPoemsRawPage(
+        client: client,
+        authorNumericId: authorNumericId,
+        page: high,
+        pageSize: firstPageSize,
+        lang: lang,
+      );
+      if (!probe.ok) {
+        return low * firstPageSize;
+      }
+      if (probe.rawCount > 0 && !probe.hasMore) {
+        return (high - 1) * firstPageSize + probe.rawCount;
+      }
+      if (probe.rawCount > 0 && probe.hasMore) {
+        low = high;
+        high *= 2;
+      } else {
+        // probe.rawCount == 0，说明最后一页在 [low + 1, high - 1] 之间
+        break;
+      }
+    }
+
+    // 2. 在 [low + 1, high - 1] 区间内二分定位最后一页
+    int left = low + 1;
+    int right = (high > maxProbePage ? maxProbePage : high) - 1;
+    int bestTotal = low * firstPageSize;
+
+    while (left <= right) {
+      final int mid = (left + right) ~/ 2;
+      final _RawPageFetch probe = await _fetchAuthorPoemsRawPage(
+        client: client,
+        authorNumericId: authorNumericId,
+        page: mid,
+        pageSize: firstPageSize,
+        lang: lang,
+      );
+      if (!probe.ok) {
+        break;
+      }
+      if (probe.rawCount > 0 && !probe.hasMore) {
+        return (mid - 1) * firstPageSize + probe.rawCount;
+      }
+      if (probe.rawCount > 0 && probe.hasMore) {
+        bestTotal = mid * firstPageSize;
+        left = mid + 1;
+      } else {
+        right = mid - 1;
+      }
+    }
+
+    return bestTotal;
+  }
+
   /// 调用「诗泉 API」全文搜索诗词（`/api/search`）
+  /// 若关键词少于 3 个字符（如 2 字人名「李白」「郑獬」或单字飞花令「月」），自动降级使用作者/单字接口检索
   Future<ShiquanSearchResult> searchPoems({
     required String query,
     int page = 1,
@@ -156,6 +439,48 @@ class ShiquanApiService {
     final String trimmed = query.trim();
     if (!enableNetwork || trimmed.isEmpty) {
       return const ShiquanSearchResult(poems: <Poem>[]);
+    }
+
+    // 诗泉 /api/search 接口要求 q >= 3 个字符；针对 1~2 字关键词做智能路由
+    if (trimmed.runes.length < 3) {
+      final Poem? byAuthorSample = await fetchRandomPoem(
+        author: trimmed,
+        lang: lang,
+      );
+      if (byAuthorSample != null) {
+        final ShiquanAuthorPoemsResult? authorList = await fetchAuthorPoems(
+          authorId: byAuthorSample.authorId,
+          page: page,
+          pageSize: pageSize,
+          resolveExactTotal: false,
+          lang: lang,
+        );
+        if (authorList != null && authorList.poems.isNotEmpty) {
+          return ShiquanSearchResult(
+            poems: authorList.poems,
+            page: page,
+            pageSize: pageSize,
+            hasMore: authorList.hasMore,
+          );
+        }
+        return ShiquanSearchResult(
+          poems: <Poem>[byAuthorSample],
+          page: 1,
+          pageSize: pageSize,
+          hasMore: false,
+        );
+      }
+      if (trimmed.runes.length == 1) {
+        final Poem? byChar = await fetchRandomPoem(char: trimmed, lang: lang);
+        if (byChar != null) {
+          return ShiquanSearchResult(
+            poems: <Poem>[byChar],
+            page: 1,
+            pageSize: pageSize,
+            hasMore: false,
+          );
+        }
+      }
     }
 
     final Map<String, String> queryParams = <String, String>{
@@ -629,3 +954,18 @@ class ShiquanApiService {
         '起承转合间既有古典格律的端严法度，又留有水墨画般的空灵留白，令读者在吟咏之际得以跨越千年时空，与古人共赏天地清欢。';
   }
 }
+
+class _RawPageFetch {
+  const _RawPageFetch({
+    required this.ok,
+    required this.poems,
+    required this.rawCount,
+    required this.hasMore,
+  });
+
+  final bool ok;
+  final List<Poem> poems;
+  final int rawCount;
+  final bool hasMore;
+}
+
