@@ -568,6 +568,51 @@ void main() {
             },
           );
         }
+        if (request.url.path == '/api/poems') {
+          final String? authorIdParam = request.url.queryParameters['authorId'];
+          if (authorIdParam == '2045') {
+            return http.Response.bytes(
+              utf8.encode(
+                jsonEncode(<String, dynamic>{
+                  'data': <Map<String, dynamic>>[
+                    <String, dynamic>{
+                      'id': 255080,
+                      'title': '鼓吹曲辞 上之回',
+                      'content': <String>[
+                        '三十六离宫，楼台与天通。',
+                        '阁道步行月，美人愁烟空。',
+                      ],
+                      'author': <String, dynamic>{'id': 2045, 'name': '李白'},
+                      'dynasty': <String, dynamic>{'id': 6, 'name': '唐'},
+                      'type': <String, dynamic>{'id': 17, 'name': '乐府诗'},
+                    },
+                    <String, dynamic>{
+                      'id': 255100,
+                      'title': '鼓吹曲辞 将进酒',
+                      'content': <String>[
+                        '君不见黄河之水天上来，奔流到海不复回。',
+                        '天生我材必有用，千金散尽还复来。',
+                      ],
+                      'author': <String, dynamic>{'id': 2045, 'name': '李白'},
+                      'dynasty': <String, dynamic>{'id': 6, 'name': '唐'},
+                      'type': <String, dynamic>{'id': 17, 'name': '乐府诗'},
+                    },
+                  ],
+                  'pagination': <String, dynamic>{
+                    'page': 1,
+                    'pageSize': 100,
+                    'hasMore': true,
+                  },
+                  'lang': 'zh-Hans',
+                }),
+              ),
+              200,
+              headers: const <String, String>{
+                'content-type': 'application/json; charset=utf-8',
+              },
+            );
+          }
+        }
         return http.Response('Not Found', 404);
       });
 
@@ -591,8 +636,10 @@ void main() {
       expect(viewModel.currentPoem.id, 'shiquan_310281');
       expect(viewModel.currentPoem.title, '送族弟单父主簿凝');
       expect(viewModel.currentPoem.isRemote, isTrue);
-      // 自动关联至内置名家李白 (li_bai)
+      // 自动关联至内置名家李白 (li_bai)，并自动拉取李白在诗泉全库中的收录总数（1863 首）与作品列表
       expect(viewModel.currentPoem.authorId, 'li_bai');
+      expect(viewModel.getAuthorTotalPoemCount('li_bai'), 1863);
+      expect(viewModel.getAuthorWorks('li_bai').length, greaterThanOrEqualTo(5));
       expect(find.text('诗泉云卷'), findsOneWidget);
 
       // 2. 切换至「寻章摘句」探索页，输入本地不存在的关键词并点击「诗泉全库检索」
