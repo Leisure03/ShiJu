@@ -327,7 +327,9 @@ class _HomeViewState extends State<HomeView>
                     const SizedBox(width: 8),
                   ],
                   Text(
-                    '第 ${widget.viewModel.currentIndex + 1} / ${widget.viewModel.allPoems.length} 笺',
+                    widget.viewModel.allPoems.isEmpty
+                        ? '诗泉云卷 · 待采撷'
+                        : '第 ${widget.viewModel.currentIndex + 1} / ${widget.viewModel.allPoems.length} 笺',
                     style: AppTypography.label(
                       palette.mutedText,
                       fontSize: 11.5,

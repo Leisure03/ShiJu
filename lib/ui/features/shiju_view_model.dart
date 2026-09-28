@@ -143,14 +143,37 @@ class ShiJuViewModel extends ChangeNotifier {
   /// 是否正在同步云端藏书阁
   bool get isSyncingCloud => _isSyncingCloud;
 
+  static const Poem _kEmptyPlaceholderPoem = Poem(
+    id: 'shiquan_loading_placeholder',
+    featuredQuote: '诗泉涌墨，正在从三十七万首古籍云库采撷佳句……',
+    title: '诗泉云卷',
+    dynasty: '古典',
+    authorId: 'shiquan_cloud',
+    authorName: '诗泉典藏',
+    paragraphs: <String>[
+      '诗泉涌墨，正在从三十七万首古籍云库采撷佳句……',
+    ],
+    tags: <String>['山水', '旷达'],
+    paletteType: PaletteType.xuanPaper,
+    isRemote: true,
+    genre: '古籍云卷',
+    translation: '正在连接诗泉（poetry.palemoky.com）云端古籍库拉取诗词，亦可点击下方「诗泉采诗」立即采撷。',
+    annotations: <PoemAnnotation>[],
+    background: '全站诗词均实时采自「诗泉」37 万首开源古典诗词云库。',
+    appreciation: '轻触下方「诗泉采诗」按钮，即可从云端随机采撷历代名篇。',
+  );
+
   /// 获取全部诗词
   List<Poem> get allPoems => _poems;
 
-  /// 当前首页展示的诗词
-  Poem get currentPoem => _poems[_currentIndex];
+  /// 当前首页展示的诗词（若本地缓存为空且云端正在加载，返回过渡占位诗笺）
+  Poem get currentPoem => _poems.isNotEmpty
+      ? _poems[_currentIndex.clamp(0, _poems.length - 1)]
+      : _kEmptyPlaceholderPoem;
 
   /// 当前诗词序号（0-based）
-  int get currentIndex => _currentIndex;
+  int get currentIndex =>
+      _poems.isNotEmpty ? _currentIndex.clamp(0, _poems.length - 1) : 0;
 
   /// 是否为古籍竖排模式（vertical-rl）
   bool get isVerticalLayout => _isVerticalLayout;
@@ -266,8 +289,12 @@ class ShiJuViewModel extends ChangeNotifier {
 
     _isInitialized = true;
 
-    // 默认将首屏诗词记入阅读历史
-    await recordReadingHistory(currentPoem.id, notify: false);
+    // 若已有缓存诗词，默认将首屏诗词记入阅读历史；若缓存为空则自动从「诗泉 API」采撷首屏诗词
+    if (_poems.isNotEmpty) {
+      await recordReadingHistory(currentPoem.id, notify: false);
+    } else if (_repository.shiquanApiService.enableNetwork) {
+      unawaited(fetchRandomFromShiquan());
+    }
     notifyListeners();
 
     // 异步拉取远端 dist/build-manifest.json 检查是否有 Jenkins 新构建版本
@@ -381,6 +408,12 @@ class ShiJuViewModel extends ChangeNotifier {
 
   /// 下一句
   Future<void> nextQuote() async {
+    if (_poems.isEmpty) {
+      if (_repository.shiquanApiService.enableNetwork) {
+        await fetchRandomFromShiquan();
+      }
+      return;
+    }
     _currentIndex = (_currentIndex + 1) % _poems.length;
     await recordReadingHistory(currentPoem.id, notify: false);
     notifyListeners();
@@ -388,6 +421,12 @@ class ShiJuViewModel extends ChangeNotifier {
 
   /// 上一句
   Future<void> previousQuote() async {
+    if (_poems.isEmpty) {
+      if (_repository.shiquanApiService.enableNetwork) {
+        await fetchRandomFromShiquan();
+      }
+      return;
+    }
     _currentIndex = (_currentIndex - 1 + _poems.length) % _poems.length;
     await recordReadingHistory(currentPoem.id, notify: false);
     notifyListeners();
@@ -395,7 +434,12 @@ class ShiJuViewModel extends ChangeNotifier {
 
   /// 偶遇下一句（随机漫游，确保切换到不同于当前的一句）
   Future<void> roamRandomQuote() async {
-    if (_poems.length <= 1) return;
+    if (_poems.length <= 1) {
+      if (_repository.shiquanApiService.enableNetwork) {
+        await fetchRandomFromShiquan();
+      }
+      return;
+    }
     int nextIdx = _random.nextInt(_poems.length);
     if (nextIdx == _currentIndex) {
       nextIdx = (_currentIndex + 1 + _random.nextInt(_poems.length - 1)) %

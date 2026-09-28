@@ -4,7 +4,6 @@ import 'package:http/http.dart' as http;
 import '../../domain/models/poem_model.dart';
 import '../../ui/core/theme/traditional_palette.dart';
 import 'classical_knowledge_service.dart';
-import 'curated_poetry_data.dart';
 
 /// 诗泉搜索分页结果封装
 @immutable
@@ -713,16 +712,6 @@ class ShiquanApiService {
         paragraphs,
         dynasty,
       );
-    }
-
-    // 若与内置 18 首精选名篇同标题且同作者，优先复用内置精修赏析与译注
-    for (final Poem curated in CuratedPoetryData.poems) {
-      if (curated.authorName == authorName &&
-          (curated.title == title ||
-              title.contains(curated.title) ||
-              curated.title.contains(title))) {
-        return curated;
-      }
     }
 
     // 智能甄选首页展示的代表名句（优先选择含对仗标点的完整联句）

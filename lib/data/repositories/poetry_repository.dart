@@ -6,7 +6,7 @@ import '../services/curated_poetry_data.dart';
 import '../services/local_storage_service.dart';
 import '../services/shiquan_api_service.dart';
 
-/// 诗词与名家数据仓库（Single Source of Truth：融合内置精修善本 + 诗泉 37 万首云库 + 古典考据知识库 + 本地持久化缓存）
+/// 诗词与名家数据仓库（Single Source of Truth：诗泉 37 万首云库 + 古典考据知识库 + 本地持久化缓存）
 class PoetryRepository {
   PoetryRepository({
     LocalStorageService? storageService,
@@ -37,7 +37,7 @@ class PoetryRepository {
 
   ShiquanApiService get shiquanApiService => _shiquanApiService;
 
-  /// 获取全部诗词（内置 18 首名篇 + 已缓存的诗泉云端诗词）
+  /// 获取全部已加载诗词（全部来自诗泉云端采撷与本地缓存，已移除内置 18 首静态诗词）
   List<Poem> getAllPoems() => <Poem>[
         ...CuratedPoetryData.poems,
         ..._remotePoems,
@@ -49,7 +49,7 @@ class PoetryRepository {
   /// 获取全部意境分类筛选标签
   List<String> getAllMoodTags() => CuratedPoetryData.allMoodTags;
 
-  /// 根据诗词 ID 查询单首诗词（同时检索内置诗库、诗泉本地缓存库与作者全集缓存）
+  /// 根据诗词 ID 查询单首诗词（检索诗泉本地缓存库与作者全集缓存）
   Poem? getPoemById(String id) {
     for (final Poem poem in CuratedPoetryData.poems) {
       if (poem.id == id) {

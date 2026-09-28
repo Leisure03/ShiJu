@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shiju/data/repositories/poetry_repository.dart';
 import 'package:shiju/data/services/app_update_service.dart';
+import 'package:shiju/data/services/curated_poetry_data.dart';
 import 'package:shiju/data/services/local_storage_service.dart';
 import 'package:shiju/data/services/shiquan_api_service.dart';
 import 'package:shiju/data/services/storage_driver_stub.dart';
@@ -16,6 +17,193 @@ import 'package:shiju/main.dart';
 import 'package:shiju/ui/core/theme/traditional_palette.dart';
 import 'package:shiju/ui/core/widgets/shichen_greeting_bar.dart';
 import 'package:shiju/ui/features/shiju_view_model.dart';
+
+/// 离线 UI 测试专用的模拟云端缓存诗作（生产环境已移除内置 18 首静态诗词）
+const List<Poem> _kOfflineTestPoems = <Poem>[
+  Poem(
+    id: 'poem_01',
+    featuredQuote: '醉后不知天在水，满船清梦压星河。',
+    title: '题龙阳县青草湖',
+    dynasty: '元',
+    authorId: 'tang_wenru',
+    authorName: '唐温如',
+    paragraphs: <String>[
+      '西风吹老洞庭波，一夜湘君白发多。',
+      '醉后不知天在水，满船清梦压星河。',
+    ],
+    tags: <String>['星空', '江湖', '梦境', '旷达'],
+    paletteType: PaletteType.tianShuiBi,
+    isRemote: true,
+    genre: '七言绝句',
+    translation:
+        '飒飒秋风吹拂着古老的洞庭湖水，一夜之间仿佛连湘君也添了许多愁白之发。沉醉之后浑然不知是天空倒映在湖水中，只觉满船清澄的梦境沉甸甸地压在璀璨星河之上。',
+    annotations: <PoemAnnotation>[
+      PoemAnnotation(term: '青草湖', explanation: '位于今湖南岳阳西南，与洞庭湖相连。'),
+      PoemAnnotation(term: '星河', explanation: '天河、银河，倒映于澄澈湖面之中。'),
+    ],
+    background: '元代诗人唐温如泛舟洞庭青草湖时即景抒怀之作。',
+    appreciation: '全诗前两句写秋风洞庭之苍茫萧瑟，后两句奇峰突起，将天、水、船、梦、星河融为一炉。',
+  ),
+  Poem(
+    id: 'poem_02',
+    featuredQuote: '但愿人长久，千里共婵娟。',
+    title: '水调歌头·明月几时有',
+    dynasty: '宋',
+    authorId: 'su_shi',
+    authorName: '苏轼',
+    paragraphs: <String>[
+      '明月几时有？把酒问青天。',
+      '不知天上宫阙，今夕是何年。',
+      '人有悲欢离合，月有阴晴圆缺，此事古难全。',
+      '但愿人长久，千里共婵娟。',
+    ],
+    tags: <String>['明月', '思念', '旷达', '哲理'],
+    paletteType: PaletteType.songHuaHuang,
+    isRemote: true,
+    genre: '宋词',
+    translation:
+        '皎洁的明月是什么时候出现的？我端起酒杯询问辽阔的青天。人世间总有悲欢离合，明月总有阴晴圆缺，自古以来难以十全十美。只愿亲人健康长久，即使相隔千里也能共享这美好的月光。',
+    annotations: <PoemAnnotation>[
+      PoemAnnotation(term: '婵娟', explanation: '姿态美好，词中指代皎洁的明月。'),
+    ],
+    background: '宋神宗熙宁九年（1076）中秋，苏轼在密州任上怀念胞弟苏辙所作。',
+    appreciation: '词人由问月入题，历经超尘与留恋人间的思索，终以哲理化的旷达祝愿收束全篇。',
+  ),
+  Poem(
+    id: 'poem_03',
+    featuredQuote: '回首向来萧瑟处，归去，也无风雨也无晴。',
+    title: '定风波·莫听穿林打叶声',
+    dynasty: '宋',
+    authorId: 'su_shi',
+    authorName: '苏轼',
+    paragraphs: <String>[
+      '莫听穿林打叶声，何妨吟啸且徐行。',
+      '竹杖芒鞋轻胜马，谁怕？一蓑烟雨任平生。',
+      '回首向来萧瑟处，归去，也无风雨也无晴。',
+    ],
+    tags: <String>['旷达', '风雨', '哲理', '山林'],
+    paletteType: PaletteType.tianShuiBi,
+    isRemote: true,
+    genre: '宋词',
+    translation: '不用去理会穿林打叶的骤雨声，不妨一边吟咏长啸一边从容慢行。回头望向刚才风雨萧瑟的地方，坦然归去，心头既无所谓风雨也无所谓晴朗。',
+    annotations: <PoemAnnotation>[
+      PoemAnnotation(term: '芒鞋', explanation: '草鞋。'),
+    ],
+    background: '苏轼谪居黄州期间，与友人春日出游沙湖途中遇雨所作。',
+    appreciation: '于寻常途中遇雨的小事中，见出东坡居士超然物外、宠辱不惊的生命境界。',
+  ),
+  Poem(
+    id: 'poem_04',
+    featuredQuote: '小舟从此逝，江海寄余生。',
+    title: '临江仙·夜归临皋',
+    dynasty: '宋',
+    authorId: 'su_shi',
+    authorName: '苏轼',
+    paragraphs: <String>[
+      '夜饮东坡醒复醉，归来仿佛三更。',
+      '长恨此身非我有，何时忘却营营。',
+      '小舟从此逝，江海寄余生。',
+    ],
+    tags: <String>['江湖', '旷达', '夜色'],
+    paletteType: PaletteType.muShanZi,
+    isRemote: true,
+    genre: '宋词',
+    translation: '驾着一叶扁舟从此远逝，将余生寄托在辽阔无际的江海之中。',
+    annotations: <PoemAnnotation>[
+      PoemAnnotation(term: '临皋', explanation: '黄州长江边的临皋亭，苏轼谪居黄州时的寓所。'),
+    ],
+    background: '苏轼贬谪黄州期间夜饮东坡归寓所作。',
+    appreciation: '结句“小舟从此逝，江海寄余生”写出词人渴望挣脱世网、放浪江湖的旷达浩气。',
+  ),
+  Poem(
+    id: 'poem_05',
+    featuredQuote: '何夜无月？何处无竹柏？但少闲人如吾两人者耳。',
+    title: '记承天寺夜游',
+    dynasty: '宋',
+    authorId: 'su_shi',
+    authorName: '苏轼',
+    paragraphs: <String>[
+      '庭下如积水空明，水中藻、荇交横，盖竹柏影也。',
+      '何夜无月？何处无竹柏？但少闲人如吾两人者耳。',
+    ],
+    tags: <String>['明月', '夜色', '闲适', '知己'],
+    paletteType: PaletteType.tianShuiBi,
+    isRemote: true,
+    genre: '散文小品',
+    translation: '哪一夜没有皎洁的月光？哪里没有翠竹与苍柏？只是缺少像我们两个这样清闲旷达的人罢了。',
+    annotations: <PoemAnnotation>[
+      PoemAnnotation(term: '承天寺', explanation: '位于黄州城南的古寺。'),
+    ],
+    background: '元丰六年十月十二日夜，苏轼在黄州与张怀民夜游承天寺所作。',
+    appreciation: '全篇仅八十余字，写月色不着一“月”字而空明澄澈，尽显清欢雅趣。',
+  ),
+  Poem(
+    id: 'poem_06',
+    featuredQuote: '危楼高百尺，手可摘星辰。',
+    title: '夜宿山寺',
+    dynasty: '唐',
+    authorId: 'li_bai',
+    authorName: '李白',
+    paragraphs: <String>[
+      '危楼高百尺，手可摘星辰。',
+      '不敢高声语，恐惊天上人。',
+    ],
+    tags: <String>['星空', '夜色', '山林'],
+    paletteType: PaletteType.muShanZi,
+    isRemote: true,
+    genre: '五言绝句',
+    translation: '山上寺院的高楼耸入云霄，伸出手仿佛就能摘下满天星辰。',
+    annotations: <PoemAnnotation>[
+      PoemAnnotation(term: '危楼', explanation: '高耸入云的楼阁。'),
+    ],
+    background: '李白游历名山古刹、夜宿山顶高楼时即兴赋诗。',
+    appreciation: '二十字浑然天成，以奇特夸张写山寺之高耸与星夜之静谧。',
+  ),
+  Poem(
+    id: 'poem_07',
+    featuredQuote: '天阶夜色凉如水，卧看牵牛织女星。',
+    title: '秋夕',
+    dynasty: '唐',
+    authorId: 'du_mu',
+    authorName: '杜牧',
+    paragraphs: <String>[
+      '银烛秋光冷画屏，轻罗小扇扑流萤。',
+      '天阶夜色凉如水，卧看牵牛织女星。',
+    ],
+    tags: <String>['星空', '夜色', '秋意'],
+    paletteType: PaletteType.muShanZi,
+    isRemote: true,
+    genre: '七言绝句',
+    translation: '皇宫石阶上的夜色清凉如水，静静仰卧遥望天河两岸的牵牛星与织女星。',
+    annotations: <PoemAnnotation>[
+      PoemAnnotation(term: '天阶', explanation: '宫中的石阶。'),
+    ],
+    background: '杜牧描绘秋夜庭院星空的传世绝句。',
+    appreciation: '以清冷秋光与浩瀚星河相映，余韵悠长。',
+  ),
+  Poem(
+    id: 'poem_08',
+    featuredQuote: '星垂平野阔，月涌大江流。',
+    title: '旅夜书怀',
+    dynasty: '唐',
+    authorId: 'du_fu',
+    authorName: '杜甫',
+    paragraphs: <String>[
+      '细草微风岸，危樯独夜舟。',
+      '星垂平野阔，月涌大江流。',
+    ],
+    tags: <String>['星空', '明月', '江湖'],
+    paletteType: PaletteType.tianShuiBi,
+    isRemote: true,
+    genre: '五言律诗',
+    translation: '璀璨群星低垂在辽阔的平原天际，银白月光随滚滚长江奔涌东流。',
+    annotations: <PoemAnnotation>[
+      PoemAnnotation(term: '危樯', explanation: '高耸的船桅杆。'),
+    ],
+    background: '杜甫乘舟离开成都顺江东下途中夜泊抒怀之作。',
+    appreciation: '颔联十字雄浑苍茫，与太白“山随平野尽，江入大荒流”并称千古壮观。',
+  ),
+];
 
 /// 内存模拟 StorageDriver，用于隔离测试 localStorage 持久化逻辑
 class InMemoryStorageDriver implements StorageDriver {
@@ -36,6 +224,13 @@ ShiJuViewModel _createTestViewModel({
   ShiquanApiService? shiquanApiService,
 }) {
   final InMemoryStorageDriver storageDriver = driver ?? InMemoryStorageDriver();
+  if (shiquanApiService == null &&
+      !storageDriver.store
+          .containsKey(LocalStorageService.kCachedShiquanPoemsKey)) {
+    storageDriver.store[LocalStorageService.kCachedShiquanPoemsKey] = jsonEncode(
+      _kOfflineTestPoems.map((Poem p) => p.toJson()).toList(),
+    );
+  }
   final LocalStorageService storageService =
       LocalStorageService(driver: storageDriver);
   final PoetryRepository repository = PoetryRepository(
@@ -52,6 +247,10 @@ ShiJuViewModel _createTestViewModel({
 
 void main() {
   group('拾句 (ShiJu) 核心领域与工具测试', () {
+    test('内置 18 首静态诗词已彻底移除，CuratedPoetryData.poems 为空列表', () {
+      expect(CuratedPoetryData.poems, isEmpty);
+    });
+
     test('十二时辰计算器能准确映射古代时辰与应景导语', () {
       final ShichenInfo xuShi =
           ShichenInfo.fromDateTime(DateTime(2026, 9, 26, 20, 15));
@@ -639,7 +838,7 @@ void main() {
       // 自动关联至内置名家李白 (li_bai)，并自动拉取李白在诗泉全库中的收录总数（1863 首）与作品列表
       expect(viewModel.currentPoem.authorId, 'li_bai');
       expect(viewModel.getAuthorTotalPoemCount('li_bai'), 1863);
-      expect(viewModel.getAuthorWorks('li_bai').length, greaterThanOrEqualTo(5));
+      expect(viewModel.getAuthorWorks('li_bai').length, greaterThanOrEqualTo(3));
       expect(find.text('诗泉云卷'), findsOneWidget);
 
       // 2. 切换至「寻章摘句」探索页，输入本地不存在的关键词并点击「诗泉全库检索」
