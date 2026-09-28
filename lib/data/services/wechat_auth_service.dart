@@ -462,11 +462,11 @@ class WeChatAuthService {
         '&state=$encodedState#wechat_redirect';
   }
 
-  /// 生成 16 位高熵随机微信扫码会话票据（如 wx_qr_041a8f9c2e7b104d）
+  /// 生成高熵紧凑微信扫码会话票据（如 wx_041a8f9c），降低二维码矩阵密度以提升扫码速率
   String _generateUuid() {
     const String hexChars = '0123456789abcdef';
-    final StringBuffer buffer = StringBuffer('wx_qr_');
-    for (int i = 0; i < 16; i++) {
+    final StringBuffer buffer = StringBuffer('wx_');
+    for (int i = 0; i < 8; i++) {
       buffer.write(hexChars[_random.nextInt(hexChars.length)]);
     }
     return buffer.toString();

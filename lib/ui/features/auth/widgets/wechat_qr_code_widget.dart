@@ -288,7 +288,7 @@ class _WeChatQrCodeBoxState extends State<WeChatQrCodeBox>
       height: widget.size,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: TraditionalPalette.kXuanPaperWhite,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: status == WeChatQrStatus.scannedWaitingConfirm
@@ -307,39 +307,14 @@ class _WeChatQrCodeBoxState extends State<WeChatQrCodeBox>
       child: Stack(
         alignment: Alignment.center,
         children: <Widget>[
-          // 底层：符合 ISO/IEC 18004 标准的真实可扫描微信二维码矩阵
+          // 底层：符合 ISO/IEC 18004 标准的无遮挡高对比度真实可扫描微信二维码矩阵
           Positioned.fill(
             child: CustomPaint(
               painter: _DeterministicWeChatQrPainter(
                 dataSeed: widget.session.qrCodeUrl,
-                inkColor: TraditionalPalette.kInkBlack,
-                accentColor: kWeChatBambooGreen,
+                inkColor: Colors.black,
+                accentColor: Colors.black,
               ),
-            ),
-          ),
-
-          // 中央：微信品牌圆角白底徽标（控制在 15% Level M 纠错容差之内，确保真机秒扫识别）
-          Container(
-            width: 30,
-            height: 30,
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: TraditionalPalette.kXuanPaperWhite,
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: kWeChatGreen.withValues(alpha: 0.35),
-                width: 1.0,
-              ),
-              boxShadow: <BoxShadow>[
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.08),
-                  blurRadius: 4,
-                ),
-              ],
-            ),
-            child: const WeChatBrandIcon(
-              size: 18,
-              color: kWeChatGreen,
             ),
           ),
 
