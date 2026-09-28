@@ -64,17 +64,21 @@ class WeChatQrLoginDialog extends StatefulWidget {
 
 class _WeChatQrLoginDialogState extends State<WeChatQrLoginDialog> {
   late WeChatQrSession _session;
+  late WeChatOAuthMode _oauthMode;
   WeChatPresetAccount _selectedPreset = WeChatPresetAccount.presets.first;
   Timer? _backendPollTimer;
 
   @override
   void initState() {
     super.initState();
+    _oauthMode = widget.viewModel.authService.config.oauthMode;
     final DateTime now = DateTime.now();
     _session = WeChatQrSession(
       uuid: 'wx_qr_init_${now.millisecondsSinceEpoch.toRadixString(16)}',
-      qrCodeUrl:
-          'https://open.weixin.qq.com/connect/qrconnect?appid=${widget.viewModel.authService.config.appId}&state=init',
+      qrCodeUrl: widget.viewModel.authService.buildWeChatOAuthUrl(
+        'init',
+        mode: _oauthMode,
+      ),
       createdAt: now,
       expiresAt: now.add(const Duration(seconds: 120)),
       status: WeChatQrStatus.waitingForScan,
@@ -90,8 +94,8 @@ class _WeChatQrLoginDialogState extends State<WeChatQrLoginDialog> {
 
   Future<void> _createFreshSession() async {
     _backendPollTimer?.cancel();
-    final WeChatQrSession fresh =
-        await widget.viewModel.authService.createQrSession();
+    final WeChatQrSession fresh = await widget.viewModel.authService
+        .createQrSession(modeOverride: _oauthMode);
     if (!mounted) return;
     setState(() {
       _session = fresh;
@@ -103,6 +107,15 @@ class _WeChatQrLoginDialogState extends State<WeChatQrLoginDialog> {
         (_) => _pollRealBackend(),
       );
     }
+  }
+
+  void _toggleOAuthMode() {
+    setState(() {
+      _oauthMode = _oauthMode == WeChatOAuthMode.webQrConnect
+          ? WeChatOAuthMode.mobileOAuth2
+          : WeChatOAuthMode.webQrConnect;
+    });
+    _createFreshSession();
   }
 
   Future<void> _pollRealBackend() async {
@@ -326,7 +339,59 @@ class _WeChatQrLoginDialogState extends State<WeChatQrLoginDialog> {
                           fontSize: 12.5,
                         ),
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: <Widget>[
+                          Container(
+                            key: const Key('wechat_appid_badge'),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 2.5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: kWeChatGreen.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color: kWeChatGreen.withValues(alpha: 0.25),
+                                width: 0.8,
+                              ),
+                            ),
+                            child: Text(
+                              'AppID: ${widget.viewModel.authService.config.appId}',
+                              style: AppTypography.label(
+                                kWeChatBambooGreen,
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          InkWell(
+                            key: const Key('toggle_wechat_oauth_mode_button'),
+                            onTap: _toggleOAuthMode,
+                            borderRadius: BorderRadius.circular(4),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 2,
+                              ),
+                              child: Text(
+                                _oauthMode == WeChatOAuthMode.webQrConnect
+                                    ? '协议：网站应用扫码 (snsapi_login)'
+                                    : '协议：移动端网页授权 (snsapi_userinfo)',
+                                style: AppTypography.label(
+                                  palette.themeAccent,
+                                  fontSize: 10.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
                       Divider(color: palette.borderLine, height: 1),
                       const SizedBox(height: 20),
 

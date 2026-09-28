@@ -119,11 +119,17 @@ $manifestXml = @"
     android:versionName="1.0.5">
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <queries>
+        <package android:name="com.tencent.mm" />
+    </queries>
     <application
         android:label="$cnLabel"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+        <meta-data
+            android:name="WECHAT_APP_ID"
+            android:value="wx077c9cdef033df50" />
         <activity
             android:name="com.leisure03.shiju.MainActivity"
             android:exported="true"
@@ -131,6 +137,12 @@ $manifestXml = @"
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="wx077c9cdef033df50" />
             </intent-filter>
         </activity>
     </application>

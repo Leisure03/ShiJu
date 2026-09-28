@@ -277,6 +277,14 @@ class _UserProfileDialogState extends State<UserProfileDialog> {
                                         fontSize: 12,
                                       ),
                                     ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '微信开放平台 AppID：${widget.viewModel.authService.config.appId}',
+                                      style: AppTypography.label(
+                                        palette.mutedText,
+                                        fontSize: 10.5,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),

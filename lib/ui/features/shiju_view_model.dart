@@ -297,6 +297,13 @@ class ShiJuViewModel extends ChangeNotifier {
     }
     notifyListeners();
 
+    // 若当前页面 URL 携带微信 OAuth2 授权重定向的 ?code=xxx，自动通过微信 API 换取身份完成登录
+    final String? oauthCode = Uri.base.queryParameters['code'];
+    if (oauthCode != null && oauthCode.trim().isNotEmpty) {
+      final String? oauthState = Uri.base.queryParameters['state'];
+      unawaited(loginWithWeChatAuthCode(oauthCode, state: oauthState));
+    }
+
     // 异步拉取远端 dist/build-manifest.json 检查是否有 Jenkins 新构建版本
     unawaited(checkForAppUpdate());
     // 异步刷新诗泉云端统计信息
@@ -309,6 +316,23 @@ class ShiJuViewModel extends ChangeNotifier {
       _shiquanStats = remoteStats;
       notifyListeners();
     }
+  }
+
+  /// 通过微信开放平台 / 网页授权回调的 `code`（配合 AppID `wx077c9cdef033df50`）换取用户信息并登录
+  Future<WeChatUser> loginWithWeChatAuthCode(
+    String code, {
+    String? state,
+    List<String> cloudFavorites = const <String>[],
+  }) async {
+    final WeChatUser user = await _authService.exchangeCodeForUser(
+      code: code,
+      state: state,
+    );
+    await loginWithWeChat(
+      user,
+      cloudFavorites: cloudFavorites,
+    );
+    return user;
   }
 
   /// 完成微信扫码登录，保存雅士档案并合并云端藏书阁收藏

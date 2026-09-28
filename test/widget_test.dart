@@ -10,6 +10,7 @@ import 'package:shiju/data/services/curated_poetry_data.dart';
 import 'package:shiju/data/services/local_storage_service.dart';
 import 'package:shiju/data/services/shiquan_api_service.dart';
 import 'package:shiju/data/services/storage_driver_stub.dart';
+import 'package:shiju/data/services/wechat_auth_service.dart';
 import 'package:shiju/domain/models/app_update_model.dart';
 import 'package:shiju/domain/models/auth_user_model.dart';
 import 'package:shiju/domain/models/poem_model.dart';
@@ -330,6 +331,71 @@ void main() {
       await vm3.initialize();
       expect(vm3.isLoggedIn, isFalse);
     });
+
+    test('微信开放平台真实 AppID (wx077c9cdef033df50) 已接入并支持 OAuth2 授权与 code 换取身份', () async {
+      const WeChatOpenConfig config = WeChatOpenConfig();
+      expect(config.appId, 'wx077c9cdef033df50');
+      expect(config.isOfficialAppId, isTrue);
+
+      final MockClient mockWeChatClient = MockClient((http.Request req) async {
+        if (req.url.path == '/sns/oauth2/access_token') {
+          expect(req.url.queryParameters['appid'], 'wx077c9cdef033df50');
+          expect(req.url.queryParameters['code'], '081WeChatCode99');
+          return http.Response.bytes(
+            utf8.encode(
+              jsonEncode(<String, dynamic>{
+                'access_token': 'wx_token_abc',
+                'expires_in': 7200,
+                'openid': 'oShiJu_RealOpenId_88',
+                'unionid': 'uShiJu_RealUnionId_88',
+              }),
+            ),
+            200,
+          );
+        }
+        if (req.url.path == '/sns/userinfo') {
+          expect(req.url.queryParameters['openid'], 'oShiJu_RealOpenId_88');
+          return http.Response.bytes(
+            utf8.encode(
+              jsonEncode(<String, dynamic>{
+                'openid': 'oShiJu_RealOpenId_88',
+                'nickname': '云溪剑客',
+                'headimgurl': 'https://thirdwx.qlogo.cn/mmopen/vi_32/mock/132',
+              }),
+            ),
+            200,
+          );
+        }
+        return http.Response('{}', 404);
+      });
+
+      final WeChatAuthService service = WeChatAuthService(
+        config: const WeChatOpenConfig(appSecret: 'mock_secret_for_test'),
+        httpClient: mockWeChatClient,
+      );
+
+      final WeChatQrSession qrSession = await service.createQrSession();
+      expect(qrSession.qrCodeUrl, contains('appid=wx077c9cdef033df50'));
+      expect(qrSession.qrCodeUrl, contains('connect/qrconnect'));
+
+      final String mobileUrl = service.buildWeChatOAuthUrl(
+        'state_01',
+        mode: WeChatOAuthMode.mobileOAuth2,
+      );
+      expect(mobileUrl, contains('appid=wx077c9cdef033df50'));
+      expect(mobileUrl, contains('connect/oauth2/authorize'));
+
+      final WeChatUser exchangedUser = await service.exchangeCodeForUser(
+        code: '081WeChatCode99',
+      );
+      expect(exchangedUser.openId, 'oShiJu_RealOpenId_88');
+      expect(exchangedUser.nickname, '云溪剑客');
+      expect(exchangedUser.sealText, '云溪');
+      expect(
+        exchangedUser.avatarUrl,
+        'https://thirdwx.qlogo.cn/mmopen/vi_32/mock/132',
+      );
+    });
   });
 
   group('拾句 (ShiJu) UI 与四大模块交互测试', () {
@@ -507,10 +573,11 @@ void main() {
       expect(viewModel.isLoggedIn, isFalse);
       expect(find.text('微信登录'), findsOneWidget);
 
-      // 2. 点击顶栏「微信登录」打开扫码弹窗
+      // 2. 点击顶栏「微信登录」打开扫码弹窗，验证已接入 AppID wx077c9cdef033df50
       await tester.tap(find.byKey(const Key('header_auth_button')));
       await tester.pumpAndSettle();
       expect(find.text('微信扫码登录'), findsOneWidget);
+      expect(find.text('AppID: wx077c9cdef033df50'), findsOneWidget);
       expect(find.byKey(const Key('wechat_qr_code_box')), findsOneWidget);
 
       // 3. 验证二维码过期与刷新流转

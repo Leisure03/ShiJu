@@ -132,6 +132,19 @@ class OrientalScholarAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final TraditionalPalette userPalette =
         TraditionalPalette.resolve(user.avatarTheme);
+    final String? networkAvatar = user.avatarUrl?.trim();
+    final bool hasNetworkAvatar =
+        networkAvatar != null && networkAvatar.isNotEmpty;
+
+    final Widget monogramChild = Center(
+      child: Text(
+        user.avatarMonogram,
+        style: AppTypography.sealStamp(
+          TraditionalPalette.kXuanPaperWhite,
+          fontSize: size * 0.44,
+        ).copyWith(letterSpacing: 0),
+      ),
+    );
 
     return SizedBox(
       width: size,
@@ -164,14 +177,22 @@ class OrientalScholarAvatar extends StatelessWidget {
                 ),
               ],
             ),
-            alignment: Alignment.center,
-            child: Text(
-              user.avatarMonogram,
-              style: AppTypography.sealStamp(
-                TraditionalPalette.kXuanPaperWhite,
-                fontSize: size * 0.44,
-              ).copyWith(letterSpacing: 0),
-            ),
+            clipBehavior: Clip.antiAlias,
+            child: hasNetworkAvatar
+                ? Image.network(
+                    networkAvatar,
+                    width: size,
+                    height: size,
+                    fit: BoxFit.cover,
+                    errorBuilder: (
+                      BuildContext context,
+                      Object error,
+                      StackTrace? stackTrace,
+                    ) {
+                      return monogramChild;
+                    },
+                  )
+                : monogramChild,
           ),
           if (showWeChatBadge)
             Positioned(
