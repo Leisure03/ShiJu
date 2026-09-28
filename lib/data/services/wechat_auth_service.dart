@@ -52,7 +52,7 @@ class WeChatOpenConfig {
       'WECHAT_BACKEND_URL',
       defaultValue: '',
     ),
-    this.oauthMode = WeChatOAuthMode.webQrConnect,
+    this.oauthMode = WeChatOAuthMode.mobileOAuth2,
     this.qrExpireDuration = const Duration(seconds: 120),
   })  : _customAppId = appId,
         _customAppSecret = appSecret;

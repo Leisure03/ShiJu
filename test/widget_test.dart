@@ -380,7 +380,7 @@ void main() {
 
       final WeChatQrSession qrSession = await service.createQrSession();
       expect(qrSession.qrCodeUrl, contains('appid=$kDefaultWeChatAppId'));
-      expect(qrSession.qrCodeUrl, contains('connect/qrconnect'));
+      expect(qrSession.qrCodeUrl, contains('connect/oauth2/authorize'));
 
       // 验证标准 ISO/IEC 18004 二维码矩阵生成（含三个 7x7 回字定位标与 Reed-Solomon 纠错码）
       final StandardQrMatrix qrMatrix =
