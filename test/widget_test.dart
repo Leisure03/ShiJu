@@ -16,6 +16,7 @@ import 'package:shiju/domain/models/auth_user_model.dart';
 import 'package:shiju/domain/models/poem_model.dart';
 import 'package:shiju/main.dart';
 import 'package:shiju/ui/core/theme/traditional_palette.dart';
+import 'package:shiju/ui/core/utils/qr_code_matrix.dart';
 import 'package:shiju/ui/core/widgets/shichen_greeting_bar.dart';
 import 'package:shiju/ui/features/shiju_view_model.dart';
 
@@ -332,14 +333,17 @@ void main() {
       expect(vm3.isLoggedIn, isFalse);
     });
 
-    test('微信开放平台真实 AppID (wx077c9cdef033df50) 已接入并支持 OAuth2 授权与 code 换取身份', () async {
+    test('微信开放平台真实 AppID 与 AppSecret 已接入并支持标准 QR 编码及 code 换取身份', () async {
       const WeChatOpenConfig config = WeChatOpenConfig();
-      expect(config.appId, 'wx077c9cdef033df50');
+      expect(config.appId, kDefaultWeChatAppId);
+      expect(config.appSecret, kDefaultWeChatAppSecret);
       expect(config.isOfficialAppId, isTrue);
+      expect(config.isAppSecretConfigured, isTrue);
 
       final MockClient mockWeChatClient = MockClient((http.Request req) async {
         if (req.url.path == '/sns/oauth2/access_token') {
-          expect(req.url.queryParameters['appid'], 'wx077c9cdef033df50');
+          expect(req.url.queryParameters['appid'], kDefaultWeChatAppId);
+          expect(req.url.queryParameters['secret'], kDefaultWeChatAppSecret);
           expect(req.url.queryParameters['code'], '081WeChatCode99');
           return http.Response.bytes(
             utf8.encode(
@@ -370,19 +374,27 @@ void main() {
       });
 
       final WeChatAuthService service = WeChatAuthService(
-        config: const WeChatOpenConfig(appSecret: 'mock_secret_for_test'),
+        config: config,
         httpClient: mockWeChatClient,
       );
 
       final WeChatQrSession qrSession = await service.createQrSession();
-      expect(qrSession.qrCodeUrl, contains('appid=wx077c9cdef033df50'));
+      expect(qrSession.qrCodeUrl, contains('appid=$kDefaultWeChatAppId'));
       expect(qrSession.qrCodeUrl, contains('connect/qrconnect'));
+
+      // 验证标准 ISO/IEC 18004 二维码矩阵生成（含三个 7x7 回字定位标与 Reed-Solomon 纠错码）
+      final StandardQrMatrix qrMatrix =
+          StandardQrMatrix.encode(qrSession.qrCodeUrl);
+      expect(qrMatrix.size, greaterThanOrEqualTo(49));
+      expect(qrMatrix.modules[0][0], isTrue);
+      expect(qrMatrix.modules[0][6], isTrue);
+      expect(qrMatrix.modules[3][3], isTrue);
 
       final String mobileUrl = service.buildWeChatOAuthUrl(
         'state_01',
         mode: WeChatOAuthMode.mobileOAuth2,
       );
-      expect(mobileUrl, contains('appid=wx077c9cdef033df50'));
+      expect(mobileUrl, contains('appid=$kDefaultWeChatAppId'));
       expect(mobileUrl, contains('connect/oauth2/authorize'));
 
       final WeChatUser exchangedUser = await service.exchangeCodeForUser(
@@ -573,11 +585,11 @@ void main() {
       expect(viewModel.isLoggedIn, isFalse);
       expect(find.text('微信登录'), findsOneWidget);
 
-      // 2. 点击顶栏「微信登录」打开扫码弹窗，验证已接入 AppID wx077c9cdef033df50
+      // 2. 点击顶栏「微信登录」打开扫码弹窗，验证已接入微信开放平台 AppID
       await tester.tap(find.byKey(const Key('header_auth_button')));
       await tester.pumpAndSettle();
       expect(find.text('微信扫码登录'), findsOneWidget);
-      expect(find.text('AppID: wx077c9cdef033df50'), findsOneWidget);
+      expect(find.text('AppID: ${const WeChatOpenConfig().appId}'), findsOneWidget);
       expect(find.byKey(const Key('wechat_qr_code_box')), findsOneWidget);
 
       // 3. 验证二维码过期与刷新流转

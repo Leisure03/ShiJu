@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../domain/models/auth_user_model.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/theme/traditional_palette.dart';
+import '../../../core/utils/qr_code_matrix.dart';
 import '../../../core/widgets/cinnabar_seal.dart';
 
 /// 微信品牌竹青绿常量（融合微信标准绿 #07C160 与东方竹青色韵味）
@@ -306,7 +307,7 @@ class _WeChatQrCodeBoxState extends State<WeChatQrCodeBox>
       child: Stack(
         alignment: Alignment.center,
         children: <Widget>[
-          // 底层：25x25 确定性微信二维码矩阵
+          // 底层：符合 ISO/IEC 18004 标准的真实可扫描微信二维码矩阵
           Positioned.fill(
             child: CustomPaint(
               painter: _DeterministicWeChatQrPainter(
@@ -317,27 +318,27 @@ class _WeChatQrCodeBoxState extends State<WeChatQrCodeBox>
             ),
           ),
 
-          // 中央：微信品牌圆角白底徽标
+          // 中央：微信品牌圆角白底徽标（控制在 15% Level M 纠错容差之内，确保真机秒扫识别）
           Container(
-            width: 42,
-            height: 42,
-            padding: const EdgeInsets.all(6),
+            width: 30,
+            height: 30,
+            padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
               color: TraditionalPalette.kXuanPaperWhite,
-              borderRadius: BorderRadius.circular(9),
+              borderRadius: BorderRadius.circular(6),
               border: Border.all(
-                color: kWeChatGreen.withValues(alpha: 0.32),
-                width: 1.2,
+                color: kWeChatGreen.withValues(alpha: 0.35),
+                width: 1.0,
               ),
               boxShadow: <BoxShadow>[
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.08),
-                  blurRadius: 6,
+                  blurRadius: 4,
                 ),
               ],
             ),
             child: const WeChatBrandIcon(
-              size: 26,
+              size: 18,
               color: kWeChatGreen,
             ),
           ),
@@ -535,7 +536,7 @@ class _WeChatQrCodeBoxState extends State<WeChatQrCodeBox>
   }
 }
 
-/// 25x25 高精度确定性二维码矩阵绘制器（根据 URL 哈希实时变化编码模块）
+/// 符合 ISO/IEC 18004 标准的真实微信二维码矩阵绘制器（支持手机微信「扫一扫」直接识别）
 class _DeterministicWeChatQrPainter extends CustomPainter {
   const _DeterministicWeChatQrPainter({
     required this.dataSeed,
@@ -547,156 +548,46 @@ class _DeterministicWeChatQrPainter extends CustomPainter {
   final Color inkColor;
   final Color accentColor;
 
-  static const int _gridSize = 25;
-
-  bool _isFinderPattern(int r, int c) {
-    final bool topLeft = r < 8 && c < 8;
-    final bool topRight = r < 8 && c >= _gridSize - 8;
-    final bool bottomLeft = r >= _gridSize - 8 && c < 8;
-    return topLeft || topRight || bottomLeft;
-  }
-
-  bool _isCenterLogoArea(int r, int c) {
-    return r >= 9 && r <= 15 && c >= 9 && c <= 15;
-  }
-
-  bool _isAlignmentPattern(int r, int c) {
-    return r >= 16 && r <= 20 && c >= 16 && c <= 20;
-  }
-
-  void _drawFinder(Canvas canvas, double cellSize, int startR, int startC) {
-    final Paint outerPaint = Paint()
-      ..color = inkColor
-      ..style = PaintingStyle.fill;
-    final Paint whitePaint = Paint()
-      ..color = TraditionalPalette.kXuanPaperWhite
-      ..style = PaintingStyle.fill;
-    final Paint corePaint = Paint()
-      ..color = accentColor
-      ..style = PaintingStyle.fill;
-
-    final Rect outer = Rect.fromLTWH(
-      startC * cellSize,
-      startR * cellSize,
-      7 * cellSize,
-      7 * cellSize,
-    );
-    final Rect middle = Rect.fromLTWH(
-      (startC + 1) * cellSize,
-      (startR + 1) * cellSize,
-      5 * cellSize,
-      5 * cellSize,
-    );
-    final Rect inner = Rect.fromLTWH(
-      (startC + 2) * cellSize,
-      (startR + 2) * cellSize,
-      3 * cellSize,
-      3 * cellSize,
-    );
-
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(outer, Radius.circular(cellSize * 0.8)),
-      outerPaint,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(middle, Radius.circular(cellSize * 0.5)),
-      whitePaint,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(inner, Radius.circular(cellSize * 0.4)),
-      corePaint,
-    );
+  bool _isFinderInnerCore(int r, int c, int gridSize) {
+    final bool tl = r >= 2 && r <= 4 && c >= 2 && c <= 4;
+    final bool tr = r >= 2 && r <= 4 && c >= gridSize - 5 && c <= gridSize - 3;
+    final bool bl = r >= gridSize - 5 && r <= gridSize - 3 && c >= 2 && c <= 4;
+    return tl || tr || bl;
   }
 
   @override
   void paint(Canvas canvas, Size size) {
-    final double cellSize = size.width / _gridSize;
+    final StandardQrMatrix qr = StandardQrMatrix.encode(
+      dataSeed.isEmpty ? 'https://leisure03.github.io/ShiJu/' : dataSeed,
+    );
+    final int gridSize = qr.size;
+    final double cellSize = size.width / gridSize;
 
     final Paint modulePaint = Paint()
-      ..color = inkColor.withValues(alpha: 0.90)
-      ..style = PaintingStyle.fill;
+      ..color = inkColor
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = false;
 
-    // 1. 绘制三个 7x7 回字定位标
-    _drawFinder(canvas, cellSize, 0, 0);
-    _drawFinder(canvas, cellSize, 0, _gridSize - 7);
-    _drawFinder(canvas, cellSize, _gridSize - 7, 0);
+    final Paint accentPaint = Paint()
+      ..color = accentColor
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = false;
 
-    // 2. 绘制右下 5x5 校正图形
-    for (int r = 16; r <= 20; r++) {
-      for (int c = 16; c <= 20; c++) {
-        final bool isBorder = r == 16 || r == 20 || c == 16 || c == 20;
-        final bool isCenter = r == 18 && c == 18;
-        if (isBorder || isCenter) {
-          canvas.drawRRect(
-            RRect.fromRectAndRadius(
-              Rect.fromLTWH(
-                c * cellSize + 0.4,
-                r * cellSize + 0.4,
-                cellSize - 0.8,
-                cellSize - 0.8,
-              ),
-              const Radius.circular(1.2),
-            ),
-            modulePaint,
-          );
-        }
-      }
-    }
-
-    // 3. 根据 dataSeed 计算哈希并填充数据模块
-    final List<int> seedUnits = dataSeed.codeUnits;
-    int baseHash = 0x811C9DC5;
-    for (final int unit in seedUnits) {
-      baseHash ^= unit;
-      baseHash = (baseHash * 0x01000193) & 0x7FFFFFFF;
-    }
-
-    for (int r = 0; r < _gridSize; r++) {
-      for (int c = 0; c < _gridSize; c++) {
-        if (_isFinderPattern(r, c) ||
-            _isCenterLogoArea(r, c) ||
-            _isAlignmentPattern(r, c)) {
+    for (int r = 0; r < gridSize; r++) {
+      for (int c = 0; c < gridSize; c++) {
+        if (!qr.modules[r][c]) {
           continue;
         }
-
-        // 时序线（第 6 行与第 6 列交替点亮）
-        if (r == 6 || c == 6) {
-          if ((r + c).isEven) {
-            canvas.drawRRect(
-              RRect.fromRectAndRadius(
-                Rect.fromLTWH(
-                  c * cellSize + 0.5,
-                  r * cellSize + 0.5,
-                  cellSize - 1.0,
-                  cellSize - 1.0,
-                ),
-                const Radius.circular(1.2),
-              ),
-              modulePaint,
-            );
-          }
-          continue;
-        }
-
-        final int cellSeed =
-            baseHash ^ (r * 131 + c * 977) ^ seedUnits[(r * _gridSize + c) % seedUnits.length];
-        final bool isDarkModule = ((cellSeed >> ((r + c) % 7)) & 3) != 0 &&
-            ((cellSeed + r * 17 + c * 31) % 11 < 6);
-
-        if (isDarkModule) {
-          canvas.drawRRect(
-            RRect.fromRectAndRadius(
-              Rect.fromLTWH(
-                c * cellSize + 0.45,
-                r * cellSize + 0.45,
-                cellSize - 0.9,
-                cellSize - 0.9,
-              ),
-              const Radius.circular(1.4),
-            ),
-            modulePaint,
-          );
-        }
+        final bool isFinderCore = _isFinderInnerCore(r, c, gridSize);
+        canvas.drawRect(
+          Rect.fromLTWH(
+            c * cellSize,
+            r * cellSize,
+            cellSize + 0.15,
+            cellSize + 0.15,
+          ),
+          isFinderCore ? accentPaint : modulePaint,
+        );
       }
     }
   }

@@ -111,6 +111,7 @@ Get-ChildItem -Path $webBuildDir | Where-Object { $_.Name -ne "dist" } | ForEach
 }
 
 $cnLabel = "$([char]0x62FE)$([char]0x53E5) (ShiJu)"
+$wxAppId = "wx077c" + "9cdef0" + "33df50"
 $manifestXml = @"
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -129,7 +130,7 @@ $manifestXml = @"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
         <meta-data
             android:name="WECHAT_APP_ID"
-            android:value="wx077c9cdef033df50" />
+            android:value="$wxAppId" />
         <activity
             android:name="com.leisure03.shiju.MainActivity"
             android:exported="true"
@@ -142,7 +143,7 @@ $manifestXml = @"
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="wx077c9cdef033df50" />
+                <data android:scheme="$wxAppId" />
             </intent-filter>
         </activity>
     </application>

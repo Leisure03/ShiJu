@@ -318,7 +318,7 @@ class ShiJuViewModel extends ChangeNotifier {
     }
   }
 
-  /// 通过微信开放平台 / 网页授权回调的 `code`（配合 AppID `wx077c9cdef033df50`）换取用户信息并登录
+  /// 通过微信开放平台 / 网页授权回调的 `code` 换取用户信息并登录
   Future<WeChatUser> loginWithWeChatAuthCode(
     String code, {
     String? state,
